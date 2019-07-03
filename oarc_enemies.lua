@@ -103,6 +103,7 @@ OE_ATTACK_TYPE_DSTRYD   = 13    -- Attack areas where buildings are being destro
 --      path=path,                  -- Set by on_script_path_request_finished.
 --      path_success=bool,          -- Set by on_script_path_request_finished.
 --      group_id=group_id,          -- Set during request processing.
+--      active=false,               -- Set to true while a cmd is active. Set to false after a failure.
 -- }
 
 -- Group data
@@ -110,31 +111,6 @@ OE_ATTACK_TYPE_DSTRYD   = 13    -- Attack areas where buildings are being destro
 --     group=lua_group,
 --     units={lua_entities...},
 -- }
-
-
-
-function DoesChunkContainSpawners(c_pos)
-
-    if (game.surfaces[1].is_chunk_generated(c_pos) == false) then
-        return false
-    end
-
-    local area = {{c_pos.x*32,c_pos.y*32}, {c_pos.x*32+31,c_pos.y*32+31}}
-    local spawners = game.surfaces[1].find_entities_filtered{area=area,
-        name={"biter-spawner",
-        "spitter-spawner"},
-        type="unit-spawner",
-        force="enemy",
-        limit=1}
-
-    if ((spawners ~= nil) and (#spawners > 0)) then
-        return true
-    end
-
-    return false
-end
-
-
 
 
 -- Adapted from:
@@ -204,6 +180,26 @@ function OarcEnemiesFindNearestSpawn(target_pos)
 
 end
 
+function OarcEnemiesForceCreated(event)
+    if (not event.force) then return end
+    global.oarc_enemies.tech_levels[event.force.name] = 0
+end
+
+function CountForceTechCompleted(force)
+    if (not force.technologies) then
+        SendBroadcastMsg("CountForceTechCompleted needs a valid force please.")
+        return 0
+    end
+
+    local tech_done = 0
+    for name,tech in pairs(force.technologies) do
+        if tech.researched then
+            tech_done = tech_done + 1
+        end
+    end
+
+    return tech_done
+end
 
 
 
@@ -257,19 +253,33 @@ function OarcEnemiesScienceLabAttack(force_name)
     for _,player in pairs(game.connected_players) do
         if (player.force.name == force_name) and (global.oarc_enemies.science_labs[player.name]) then
             if (#global.oarc_enemies.science_labs[player.name] > 0) then
-
-                random_lab = GetRandomValueFromTable(global.oarc_enemies.science_labs[player.name])
+                
+                local science_attack = {target_player = player.name,
+                                        target_type = OE_ATTACK_TYPE_SCIENCE,
+                                        retry_attempts=3}
                 SendBroadcastMsg("Science Lab Attack!")
-                attack_example = {target=random_lab,
-                                    size=10,
-                                    evo=0.1,
-                                    spawn_chunk=nil,
-                                    group_id=nil,
-                                    path=nil}
-                table.insert(global.oarc_enemies.attacks, attack_example)
+                table.insert(global.oarc_enemies.attacks, science_attack)
             end
         end
     end
+end
+
+-- Attack a player
+function OarcEnemiesPlayerAttack(player_name)
+
+    if (not game.players[player_name] or
+        not game.players[player_name].connected or
+        not game.players[player_name].character or
+        not game.players[player_name].character.valid) then
+        SendBroadcastMsg("OarcEnemiesPlayerAttack - player invalid or not connected?")
+        return
+    end
+
+    local player_attack =   {target_player = player_name,
+                                target_type = OE_ATTACK_TYPE_PLAYER,
+                                retry_attempts=0}
+    SendBroadcastMsg("Player Attack!")
+    table.insert(global.oarc_enemies.attacks, player_attack)
 end
 
 -- First time player init stuff
@@ -283,6 +293,11 @@ function OarcEnemiesPlayerCreatedEvent(event)
 
     if (global.oarc_enemies.science_labs[p_name] == nil) then
         global.oarc_enemies.science_labs[p_name] = {}
+    end
+
+    local force = game.players[event.player_index].force
+    if (global.oarc_enemies.tech_levels[force.name] == nil) then
+        global.oarc_enemies.tech_levels[force.name] = CountForceTechCompleted(force)
     end
 
     SendBroadcastMsg("OarcEnemiesPlayerCreatedEvent " .. p_name)
@@ -304,17 +319,23 @@ function OarcEnemiesChunkGenerated(event)
         enough_land = false
     end
 
-    -- Check if lots of trees mayb?
+    -- Check if it has spawners
+    local spawners = game.surfaces[1].find_entities_filtered{area=event.area,
+                                                                name={"biter-spawner",
+                                                                "spitter-spawner"},
+                                                                type="unit-spawner",
+                                                                force="enemy"}
 
     -- If this is the first chunk in that row:
     if (global.oarc_enemies.chunk_map[c_pos.x] == nil) then
         global.oarc_enemies.chunk_map[c_pos.x] = {}
     end
 
-    -- Confirm chunk is brand new
-    if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] == nil) then
-        global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] = {player_building=false, near_building=false, valid_spawn=enough_land}
-    end
+    -- Save chunk settings.
+    global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] = {player_building=false,
+                                                        near_building=false,
+                                                        valid_spawn=enough_land,
+                                                        enemy_spawners=spawners}
 
     -- Store min/max values for x/y dimensions:
     if (c_pos.x < global.oarc_enemies.chunk_map.min_x) then
@@ -371,6 +392,12 @@ end
 
 function OarcEnemiesIsChunkValidSpawn(c_pos)
 
+    -- Chunk should exist.
+    if (game.surfaces[1].is_chunk_generated(c_pos) == false) then
+        return false
+    end
+
+    -- Check entry exists.
     if (global.oarc_enemies.chunk_map[c_pos.x] == nil) then
         return false
     end
@@ -378,13 +405,20 @@ function OarcEnemiesIsChunkValidSpawn(c_pos)
         return false
     end
 
+    -- Get entry
     local chunk = global.oarc_enemies.chunk_map[c_pos.x][c_pos.y]
 
+    -- Check basic flags
     if (chunk.player_building or chunk.near_building or not chunk.valid_spawn) then
         return false
     end
 
-    -- Is the chunk visible to any player?
+    -- Check for spawners
+    if (not chunk.enemy_spawners or (#chunk.enemy_spawners == 0)) then
+        return false
+    end
+
+    -- Check visibility
     for _,force in pairs(game.forces) do
         if (force.name ~= "enemy") then
             if (force.is_chunk_visible(game.surfaces[1], c_pos)) then
@@ -430,6 +464,24 @@ function TestSpawnGroup()
 
 end
 
+function GetRandomScienceLab(player_name)
+
+    if (#global.oarc_enemies.science_labs[player_name] == 0) then
+        SendBroadcastMsg("GetRandomScienceLab - none found")
+        return nil
+    end
+
+    local rand_key = GetRandomKeyFromTable(global.oarc_enemies.science_labs[player_name])
+    local random_lab = global.oarc_enemies.science_labs[player_name][rand_key]
+
+    if (not random_lab or not random_lab.valid) then
+        global.oarc_enemies.science_labs[player_name][rand_key] = nil
+        return GetRandomScienceLab(player_name)
+    else
+        return random_lab
+    end
+end
+
 function OarcEnemiesOnTick()
 
     -- Validation checks and cleanup?
@@ -473,12 +525,67 @@ function OarcEnemiesOnTick()
 
     -- end
 
+
+    -- Find target given request type
+    if ((game.tick % (TICKS_PER_SECOND)) == 33) then
+        for key,attack in pairs(global.oarc_enemies.attacks) do
+            if ((attack.target_entity == nil and attack.target_chunk == nil) and 
+               (attack.target_player and attack.target_type and attack.retry_attempts)) then
+
+                if (attack.target_type == OE_ATTACK_TYPE_SCIENCE) then
+
+                    local random_lab = GetRandomScienceLab(attack.target_player)
+
+                    if (random_lab ~= nil) then
+                        global.oarc_enemies.attacks[key].target_entity = random_lab
+                        global.oarc_enemies.attacks[key].size = 10
+                        global.oarc_enemies.attacks[key].evo = 0.3
+                    else
+                        SendBroadcastMsg("No labs found to attack.")
+                        global.oarc_enemies.attacks[key] = nil
+                    end
+                
+                elseif (attack.target_type == OE_ATTACK_TYPE_PLAYER) then
+                    global.oarc_enemies.attacks[key].target_entity = game.players[attack.target_player].character
+                    global.oarc_enemies.attacks[key].size = 10
+                    global.oarc_enemies.attacks[key].evo = 0.3
+                end
+
+
+            end
+        end
+    end
+
     -- Find spawn location
     if ((game.tick % (TICKS_PER_SECOND)) == 33) then
         for key,attack in pairs(global.oarc_enemies.attacks) do
-            if (attack.spawn_chunk == nil) then
-                local e_c_pos = GetChunkPosFromTilePos(attack.target.position)
-                global.oarc_enemies.attacks[key].spawn_chunk = SpiralSearch(e_c_pos, 50, DoesChunkContainSpawners)
+            if (attack.target_entity or attack.target_chunk) and (attack.spawn_chunk == nil) then
+
+                if (not attack.target_entity.valid) then
+                    global.oarc_enemies.attacks[key].target_entity = nil
+                    attack.retry_attempts = attack.retry_attempts - 1
+                    if (attack.retry_attempts == 0) then
+                        SendBroadcastMsg("attack.retry_attempts = 0 - ATTACK FAILURE")
+                        global.oarc_enemies.attacks[key] = nil
+                    end
+                    break
+                end
+
+                local c_pos = GetChunkPosFromTilePos(attack.target_entity.position)
+                local spawn = SpiralSearch(c_pos, 50, OarcEnemiesIsChunkValidSpawn)
+
+                if (spawn ~= nil) then
+                    global.oarc_enemies.attacks[key].spawn_chunk = spawn
+                else
+                    global.oarc_enemies.attacks[key].target_entity = nil
+                    attack.retry_attempts = attack.retry_attempts - 1
+                    if (attack.retry_attempts == 0) then
+                        SendBroadcastMsg("attack.retry_attempts = 0 - ATTACK FAILURE")
+                        global.oarc_enemies.attacks[key] = nil
+                    end
+                end
+
+                break -- Only one search per tick.
             end
         end
     end
@@ -488,7 +595,7 @@ function OarcEnemiesOnTick()
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if (attack.spawn_chunk ~= nil) and (attack.path_id == nil) then
 
-                spawn_pos = game.surfaces[1].find_non_colliding_position("behemoth-biter",
+                spawn_pos = game.surfaces[1].find_non_colliding_position("rocket-silo",
                                                                         GetCenterTilePosFromChunkPos(attack.spawn_chunk),
                                                                         32,
                                                                         1)
@@ -496,13 +603,13 @@ function OarcEnemiesOnTick()
                 global.oarc_enemies.attacks[key].path_id = game.surfaces[1].request_path{bounding_box={{0,0},{1,1}},
                                                                 collision_mask={"player-layer"},
                                                                 start=spawn_pos,
-                                                                goal=attack.target.position,
+                                                                goal=attack.target_entity.position,
                                                                 force=game.forces["enemy"],
                                                                 radius=8,
                                                                 pathfind_flags={low_priority=true},
                                                                 can_open_gates=false,
                                                                 path_resolution_modifier=-1}
-
+                break
             end
         end
     end
@@ -510,8 +617,8 @@ function OarcEnemiesOnTick()
     -- Spawn group
     if ((game.tick % (TICKS_PER_SECOND)) == 35) then
         for key,attack in pairs(global.oarc_enemies.attacks) do
-            if (attack.path ~= nil) and (attack.group_id == nil) then
-            -- if (attack.spawn_chunk ~= nil) and (attack.group_id == nil) then
+            if (attack.path) and (attack.group_id == nil) then
+            -- if (attack.spawn_chunk) and (attack.group_id == nil) then
                 local group = CreateEnemyGroupGivenEvoAndCount(game.surfaces[1],
                                                 attack.spawn_pos,
                                                 0.25,
@@ -524,12 +631,12 @@ function OarcEnemiesOnTick()
     -- Send group on attack
     if ((game.tick % (TICKS_PER_SECOND)) == 36) then
         for key,attack in pairs(global.oarc_enemies.attacks) do
-            if (attack.group_id ~= nil) then
+            if (attack.group_id) and (attack.path_id) and (not attack.active) then
                 for _,group in pairs(global.oarc_enemies.groups) do
                     if (attack.group_id == group.group_number) and (group.valid) then
-                        EnemyGroupAttackEntity(group, attack.target)
-                        -- EnemyGroupAttackEntityCompoundCmd(group, attack.target, attack.path)
-                        global.oarc_enemies.attacks[key] = nil
+                        -- EnemyGroupAttackEntity(group, attack.target_entity)
+                        EnemyGroupAttackEntityCompoundCmd(group, attack.target_entity, attack.path)
+                        global.oarc_enemies.attacks[key].active = true
                     end
                 end
             end
@@ -554,6 +661,39 @@ function OarcEnemiesOnTick()
 end
 
 
+function OarcEnemiesGroupCmdFailed(event)
+    local attack_key = FindAttackKeyFromGroupIdNumber(event.unit_number)
+    if (attack_key == nil) then
+        SendBroadcastMsg("OarcEnemiesGroupCmdFailed - ATTACK KEY NIL?! " .. event.unit_number)
+        return
+    end
+    local attack = global.oarc_enemies.attacks[attack_key]
+
+    -- Wander means we won't lose the group if it's finished a command and has nothing to do.
+    -- local wander_cmd = 
+    -- {
+    --     type = defines.command.wander,
+    --     distraction = distraction
+    -- }
+    -- local group = FindEnemyGroupFromIdNumber(event.unit_number)
+    -- group.set_command(wander_cmd)
+
+    if (attack.target_type == OE_ATTACK_TYPE_PLAYER) then
+
+        -- Request new path checks?
+
+        -- global.oarc_enemies.attacks[attack_key].path_id = nil
+        global.oarc_enemies.attacks[attack_key].active = false
+    -- elseif (attack.retry_attempts > 0) then
+    --     global.oarc_enemies.attacks[attack_key].retry_attempts = attack.retry_attempts-1
+    -- elseif (attack.retry_attempts == 0) then
+
+    else
+        SendBroadcastMsg("OarcEnemiesGroupCmdFailed - Group is autonomous now " .. event.unit_number)
+        group.set_autonomous()
+        global.oarc_enemies.attacks[attack_key] = nil
+    end
+end
 
 
 
@@ -595,6 +735,28 @@ function CreateEnemyGroup(surface, position, units)
 end
 
 
+function FindEnemyGroupFromIdNumber(id)
+
+    for _,group in pairs(global.oarc_enemies.groups) do
+        if (group.group_number == id) then
+            return group
+        end
+    end
+
+    return nil
+end
+
+function FindAttackKeyFromGroupIdNumber(id)
+
+    for key,attack in pairs(global.oarc_enemies.attacks) do
+        if (attack.group_id and (attack.group_id == id)) then
+            return key
+        end
+    end
+
+    return nil
+end
+
 -- Tell a group AND ALL THE UNITS to follow a given command
 function EnemyGroupUnitsDoCommand(group, new_cmd)
 
@@ -615,16 +777,21 @@ end
 
 -- Tell a unit group to attack a given area
 function EnemyGroupAttackArea(group, destination, radius)
-    local attack_area_cmd = {type = defines.command.attack_area, destination = destination, radius = radius, distraction = defines.distraction.none}
+    local attack_area_cmd = {type = defines.command.attack_area, destination = destination, radius = radius, distraction = defines.distraction.damage}
     EnemyGroupUnitsDoCommand(group, attack_area_cmd)
 end
 
 function EnemyGroupAttackEntity(group, target)
-    local attack_entity_cmd = {type = defines.command.attack, target = target, distraction = defines.distraction.none}
+    local attack_entity_cmd = {type = defines.command.attack, target = target, distraction = defines.distraction.damage}
     EnemyGroupUnitsDoCommand(group, attack_entity_cmd)
 end
 
 function EnemyGroupAttackEntityCompoundCmd(group, target, path)
+
+    if ((group == nil) or (target == nil)) then
+        SendBroadcastMsg("EnemyGroupAttackEntityCompoundCmd - Invalid group/target!")
+        return
+    end
 
     local distraction = defines.distraction.by_damage
 
@@ -648,8 +815,8 @@ function EnemyGroupAttackEntityCompoundCmd(group, target, path)
     {
         type = defines.command.wander,
         -- wander_in_group = false,
-        distraction = distraction,
-        ticks_to_wait = 60*10
+        -- ticks_to_wait = 60*10,
+        distraction = distraction
     }
 
     -- A build a base command
@@ -663,7 +830,7 @@ function EnemyGroupAttackEntityCompoundCmd(group, target, path)
 
     table.insert(waypoint_cmds, attack_entity_cmd)
     table.insert(waypoint_cmds, wander_cmd)
-    table.insert(waypoint_cmds, build_base)
+    -- table.insert(waypoint_cmds, build_base)
 
     -- Make this a compound command that attempts to execute all commands?
     local move_attack_comp_cmd =

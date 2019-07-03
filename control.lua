@@ -107,6 +107,7 @@ require("lib/oarc_utils")
 
 -- Required Includes
 require("oarc_enemies")
+require("oarc_enemies_gui")
 
 -- DEBUG prints for me
 global.oarcDebugEnabled = true
@@ -127,6 +128,15 @@ end)
 script.on_event(defines.events.on_player_respawned, function(event)
     PlayerRespawnItems(event)
 end)
+
+script.on_event(defines.events.on_player_joined_game, function(event)
+    OarcEnemiesGui(event)
+end)
+
+script.on_event(defines.events.on_gui_click, function(event)
+    OarcEnemiesGuiClick(event)
+end)
+
 
 ----------------------------------------
 -- Chunk Generation/Deletion
@@ -201,11 +211,15 @@ script.on_event(defines.events.on_unit_removed_from_group, function(event)
 end)
 
 script.on_event(defines.events.on_unit_added_to_group, function(event)
-    SendBroadcastMsg("Unit added to group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
+    -- SendBroadcastMsg("Unit added to group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
 end)
 
 script.on_event(defines.events.on_ai_command_completed, function(event)
     SendBroadcastMsg("AI cmd completed? " .. event.unit_number .. " : " .. event.result)
+
+    if (event.result == defines.behavior_result.fail) then
+        OarcEnemiesGroupCmdFailed(event)
+    end
 end)
 
 script.on_event(defines.events.on_tick, function(event)
@@ -238,7 +252,9 @@ script.on_event(defines.events.on_research_finished, function(event)
 end)
 
 
-
+script.on_event(defines.events.on_force_created, function(event)
+    OarcEnemiesForceCreated(event)
+end)
 
 
 
