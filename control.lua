@@ -2,7 +2,7 @@
 -- Sep 2018
 
 -- Oarc's New Scenario
--- 
+--
 -- Feel free to re-use anything you want. It would be nice to give me credit
 -- if you can.
 
@@ -154,9 +154,7 @@ script.on_event({defines.events.on_robot_built_entity,defines.events.on_built_en
     if ((e.type ~= "car") and (e.type ~= "logistic-robot") and (e.type ~= "construction-robot")) then
         OarcEnemiesChunkHasPlayerBuilding(e.position)
     end
-    if (e.name == "lab") then
-        OarcEnemiesTrackScienceLabs(e)
-    end
+    OarcEnemiesTrackBuildings(e)
 end)
 
 
@@ -169,45 +167,31 @@ end)
 -- This is where I modify biter spawning based on location and other factors.
 ----------------------------------------
 script.on_event(defines.events.on_entity_spawned, function(event)
-    
-    -- SendBroadcastMsg(event.entity.name .. "spawned @" .. event.entity.position.x .. "," .. event.entity.position.y)
-
-    -- if (not event.entity or not (event.entity.force.name == "enemy") or not event.entity.position) then
-    --     SendBroadcastMsg("ModifyBiterSpawns - Unexpected use.")
-    --     return
-    -- end
-
-    -- local enemy_pos = event.entity.position
-    -- local surface = event.entity.surface
-    -- local enemy_name = event.entity.name
-
-    -- if (getDistance(enemy_pos, {x=0,y=0}) > 500) then
-    --     if (enemy_name == "small-biter") then
-    --         event.entity.destroy()
-    --         local unit_position = surface.find_non_colliding_position("behemoth-biter", enemy_pos, 16, 2)
-    --         surface.create_entity{name = "behemoth-biter", position = unit_position, force = game.forces.enemy}
-    --     end
-    -- end
-
+    -- Stop enemies from being created normally:
     event.entity.destroy()
-
 end)
 
 script.on_event(defines.events.on_unit_group_created, function(event)
-    SendBroadcastMsg("Unit group created: " .. event.group.group_number)
+    OarcEnemiesGroupCreatedEvent(event)
 end)
 
 script.on_event(defines.events.on_unit_removed_from_group, function(event)
     SendBroadcastMsg("Unit removed from group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
+
+    if (event.group and event.group.valid) then
+        event.group.add_member(event.unit)
+    else
+        event.unit.die(nil, event.unit)
+    end
     -- event.unit.die(nil, event.unit)
-    local build_a_base = 
-    {
-        type = defines.command.build_base,
-        destination = event.unit.position,
-        distraction = defines.distraction.by_damage,
-        ignore_planner = true
-    }
-    event.unit.set_command(build_a_base)
+    -- local build_a_base =
+    -- {
+    --     type = defines.command.build_base,
+    --     destination = event.unit.position,
+    --     distraction = defines.distraction.by_damage,
+    --     ignore_planner = true
+    -- }
+    -- event.unit.set_command(build_a_base)
 end)
 
 script.on_event(defines.events.on_unit_added_to_group, function(event)
@@ -224,26 +208,11 @@ end)
 
 script.on_event(defines.events.on_tick, function(event)
     OarcEnemiesOnTick()
+    TimeoutSpeechBubblesOnTick()
 end)
 
 script.on_event(defines.events.on_script_path_request_finished, function(event)
-    
-    for key,attack in pairs(global.oarc_enemies.attacks) do
-        if (attack.path_id == event.id) then
-            if (event.path) then
-                SendBroadcastMsg("on_script_path_request_finished: " .. #event.path)
-                global.oarc_enemies.attacks[key].path = event.path
-                RenderPath(event.path, TICKS_PER_MINUTE*5, {game.players["Oarc"]})
-            else
-                SendBroadcastMsg("on_script_path_request_finished: FAILED")
-                if (event.try_again_later) then
-                    SendBroadcastMsg("on_script_path_request_finished: TRY AGAIN LATER?")
-                end
-                global.oarc_enemies.attacks[key] = nil
-            end
-        end
-    end
-
+    ProcessAttackCheckPathComplete(event)
 end)
 
 
@@ -289,7 +258,7 @@ end)
 
 
 commands.add_command("kill_group", "kill a group", function(command)
-    
+
     if ((group == nil) or (not group.valid)) then
         return
     end
@@ -302,7 +271,7 @@ commands.add_command("kill_group", "kill a group", function(command)
 end)
 
 commands.add_command("move_group", "move a group", function(command)
-    
+
     if ((group == nil) or (not group.valid)) then
         return
     end

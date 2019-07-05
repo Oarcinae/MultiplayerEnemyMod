@@ -1,6 +1,6 @@
 -- oarc_utils.lua
 -- Nov 2016
--- 
+--
 -- My general purpose utility functions for factorio
 -- Also contains some constants and gui styles
 
@@ -28,6 +28,37 @@ function FlyingText(msg, pos, color, surface)
         surface.create_entity({ name = "flying-text", position = pos, text = msg })
     else
         surface.create_entity({ name = "flying-text", position = pos, text = msg, color = color })
+    end
+end
+
+-- Requires having an on_tick handler.
+function DisplaySpeechBubble(player, text, timeout_secs)
+
+    if (global.oarc_speech_bubbles == nil) then
+        global.oarc_speech_bubbles = {}
+    end
+
+    if (player and player.character) then
+        local sp = player.surface.create_entity{name = "compi-speech-bubble",
+                                                position = player.position,
+                                                text = text,
+                                                source = player.character}
+        table.insert(global.oarc_speech_bubbles, {entity=sp,
+                        timeout_tick=game.tick+(timeout_secs*TICKS_PER_SECOND)})
+    end
+end
+
+-- Every second, check a global table to see if we have any speech bubbles to kill.
+function TimeoutSpeechBubblesOnTick()
+    if ((game.tick % (TICKS_PER_SECOND)) == 3) then
+        if (global.oarc_speech_bubbles and (#global.oarc_speech_bubbles > 0)) then
+            for k,sp in pairs(global.oarc_speech_bubbles) do
+                if (game.tick > sp.timeout_tick) then
+                    sp.entity.start_fading_out()
+                    global.oarc_speech_bubbles[k] = nil
+                end
+            end
+        end
     end
 end
 
@@ -108,7 +139,7 @@ function getDistance(posA, posB)
     local xDist = posB.x - posA.x
     local yDist = posB.y - posA.y
 
-    return math.sqrt( (xDist ^ 2) + (yDist ^ 2) ) 
+    return math.sqrt( (xDist ^ 2) + (yDist ^ 2) )
 end
 
 -- Given a table of positions, returns key for closest to given pos.
@@ -167,7 +198,7 @@ function GiveQuickStartPowerArmor(player)
                   -- p_armor.put({name = "exoskeleton-equipment"})
                   -- p_armor.put({name = "battery-mk2-equipment"})
                   -- p_armor.put({name = "battery-mk2-equipment"})
-                  -- p_armor.put({name = "personal-roboport-mk2-equipment"})  
+                  -- p_armor.put({name = "personal-roboport-mk2-equipment"})
                   -- p_armor.put({name = "personal-roboport-mk2-equipment"})
                   -- p_armor.put({name = "personal-roboport-mk2-equipment"})
                   -- p_armor.put({name = "battery-mk2-equipment"})
@@ -278,12 +309,12 @@ end
 -- Render a path
 function RenderPath(path, ttl, players)
     local last_pos = path[1].position
+    local color = {r = 1, g = 0, b = 0, a = 0.5}
+
     for i,v in pairs(path) do
         if (i ~= 1) then
-            local color = {}
-            if (i % 2 == 0) then
-                color={r = 1, a = 0.5}
-            end
+
+            color={r = 1/(1+(i%3)), g = 1/(1+(i%5)), b = 1/(1+(i%7)), a = 0.5}
             rendering.draw_line{color=color,
                                 width=2,
                                 from=v.position,
@@ -307,7 +338,7 @@ end
 
 -- Create a random direction vector to look in
 function GetRandomVector()
-    local randVec = {x=0,y=0}   
+    local randVec = {x=0,y=0}
     while ((randVec.x == 0) and (randVec.y == 0)) do
         randVec.x = math.random(-3,3)
         randVec.y = math.random(-3,3)
@@ -353,19 +384,19 @@ function FindMapEdge(directionVec, surface)
 
     -- Keep checking chunks in the direction of the vector
     while(true) do
-            
+
         -- Set some absolute limits.
         if ((math.abs(chunkPos.x) > 1000) or (math.abs(chunkPos.y) > 1000)) then
             break
-        
+
         -- If chunk is already generated, keep looking
         elseif (surface.is_chunk_generated(chunkPos)) then
             chunkPos.x = chunkPos.x + directionVec.x
             chunkPos.y = chunkPos.y + directionVec.y
-        
+
         -- Found a possible ungenerated area
         else
-            
+
             chunkPos.x = chunkPos.x + directionVec.x
             chunkPos.y = chunkPos.y + directionVec.y
 
@@ -405,17 +436,17 @@ function FindUngeneratedCoordinates(minDistChunks, maxDistChunks, surface)
         if (tryCounter > maxTries) then
             log("FindUngeneratedCoordinates - Max Tries Hit!")
             break
- 
+
         -- Check that the distance is within the min,max specified
         elseif ((distSqrd < minDistSqr) or (distSqrd > maxDistSqr)) then
             -- Keep searching!
-        
+
         -- Check there are no generated chunks in a 10x10 area.
         elseif IsChunkAreaUngenerated(chunkPos, CHECK_SPAWN_UNGENERATED_CHUNKS_RADIUS, surface) then
             position.x = (chunkPos.x*CHUNK_SIZE) + (CHUNK_SIZE/2)
             position.y = (chunkPos.y*CHUNK_SIZE) + (CHUNK_SIZE/2)
             break -- SUCCESS
-        end       
+        end
     end
 
     log("spawn: x=" .. position.x .. ", y=" .. position.y)
@@ -498,7 +529,7 @@ end
 
 -- Create another surface so that we can modify map settings and not have a screwy nauvis map.
 function CreateGameSurface()
-    
+
     -- Get starting surface settings.
     local nauvis_settings =  game.surfaces["nauvis"].map_gen_settings
 
@@ -544,7 +575,7 @@ function DowngradeWormsInArea(surface, area, small_percent, medium_percent, big_
     local worm_types = {"small-worm-turret", "medium-worm-turret", "big-worm-turret", "behemoth-worm-turret"}
 
     for _, entity in pairs(surface.find_entities_filtered{area = area, name = worm_types}) do
-        
+
         -- Roll a number between 0-100
         local rand_percent = math.random(0,100)
         local worm_pos = entity.position
@@ -555,7 +586,7 @@ function DowngradeWormsInArea(surface, area, small_percent, medium_percent, big_
             if (not (worm_name == "small-worm-turret")) then
                 entity.destroy()
                 surface.create_entity{name = "small-worm-turret", position = worm_pos, force = game.forces.enemy}
-            end            
+            end
 
         -- ELSE If number is less than medium percent, change to small
         elseif (rand_percent <= medium_percent) then
@@ -605,7 +636,7 @@ function RemoveWormsInArea(surface, area, small, medium, big, behemoth)
     if (behemoth) then
         table.insert(worm_types, "behemoth-worm-turret")
     end
-    
+
     -- Destroy
     if (TableLength(worm_types) > 0) then
         for _, entity in pairs(surface.find_entities_filtered{area = area, name = worm_types}) do
@@ -640,7 +671,7 @@ function SetForceGhostTimeToLive(force)
 end
 
 function SetItemBlueprintTimeToLive(event)
-    local type = event.created_entity.type    
+    local type = event.created_entity.type
     if type == "entity-ghost" or type == "tile-ghost" then
         if GHOST_TIME_TO_LIVE ~= 0 then
             event.created_entity.time_to_live = GHOST_TIME_TO_LIVE
@@ -679,15 +710,15 @@ function DropGravestoneChests(player)
         defines.inventory.character_ammo,
         defines.inventory.character_vehicle,
         defines.inventory.character_trash} do
-        
+
         local inv = player.get_inventory(id)
 
-        -- No idea how inv can be nil sometimes...?        
+        -- No idea how inv can be nil sometimes...?
         if (inv ~= nil) then
             if ((#inv > 0) and not inv.is_empty()) then
                 for j = 1, #inv do
                     if inv[j].valid_for_read then
-                        
+
                         -- Create a chest when counter is reset
                         if (count == 0) then
                             grave = DropEmptySteelChest(player)
@@ -729,12 +760,12 @@ function DropGravestoneChestFromCorpse(corpse)
 
     local inv = corpse.get_inventory(defines.inventory.character_corpse)
 
-    -- No idea how inv can be nil sometimes...?        
+    -- No idea how inv can be nil sometimes...?
     if (inv ~= nil) then
         if ((#inv > 0) and not inv.is_empty()) then
             for j = 1, #inv do
                 if inv[j].valid_for_read then
-                    
+
                     -- Create a chest when counter is reset
                     if (count == 0) then
                         grave = DropEmptySteelChest(corpse)
@@ -785,7 +816,7 @@ function TransferItems(srcInv, destEntity, itemStack)
     if (not destEntity.can_insert(itemStack)) then
         return -2
     end
-    
+
     -- Insert items
     local itemsRemoved = srcInv.remove(itemStack)
     itemStack.count = itemsRemoved
@@ -819,7 +850,7 @@ function AutofillTurret(player, turret)
         -- Inserted ammo successfully
         -- FlyingText("Inserted ammo x" .. ret, turret.position, my_color_red, player.surface)
     elseif (ret == -1) then
-        FlyingText("Out of ammo!", turret.position, my_color_red, player.surface) 
+        FlyingText("Out of ammo!", turret.position, my_color_red, player.surface)
     elseif (ret == -2) then
         FlyingText("Autofill ERROR! - Report this bug!", turret.position, my_color_red, player.surface)
     end
@@ -829,7 +860,7 @@ end
 function AutoFillVehicle(player, vehicle)
     local mainInv = player.get_main_inventory()
     if (mainInv == nil) then return end
-    
+
     -- Attempt to transfer some fuel
     if ((vehicle.name == "car") or (vehicle.name == "tank") or (vehicle.name == "locomotive")) then
         TransferItemMultipleTypes(mainInv, vehicle, {"nuclear-fuel", "rocket-fuel", "solid-fuel", "coal", "wood"}, 50)
@@ -871,7 +902,7 @@ function CreateCropCircle(surface, centerPos, chunkArea, tileRadius)
             end
 
             -- Create a circle of trees around the spawn point.
-            if ((distVar < tileRadSqr-200) and 
+            if ((distVar < tileRadSqr-200) and
                 (distVar > tileRadSqr-400)) then
                 surface.create_entity({name="tree-02", amount=1, position={i, j}})
             end
@@ -902,12 +933,12 @@ function CreateCropOctagon(surface, centerPos, chunkArea, tileRadius)
             end
 
             -- Create a tree ring
-            if ((distVar < tileRadius) and 
+            if ((distVar < tileRadius) and
                 (distVar > tileRadius-2)) then
                 surface.create_entity({name="tree-01", amount=1, position={i, j}})
             end
         end
-    end    
+    end
     surface.set_tiles(dirtTiles)
 end
 
@@ -925,14 +956,14 @@ function CreateMoat(surface, centerPos, chunkArea, tileRadius)
             local distVar = math.floor((centerPos.x - i)^2 + (centerPos.y - j)^2)
 
             -- Create a circle of water
-            if ((distVar < tileRadSqr+(1500*global.ocfg.spawn_config.gen_settings.moat_size_modifier)) and 
+            if ((distVar < tileRadSqr+(1500*global.ocfg.spawn_config.gen_settings.moat_size_modifier)) and
                 (distVar > tileRadSqr)) then
                 table.insert(waterTiles, {name = "water", position ={i,j}})
             end
 
             -- Enforce land inside the edges of the circle to make sure it's
             -- a clean transition
-            if ((distVar <= tileRadSqr) and 
+            if ((distVar <= tileRadSqr) and
                 (distVar > tileRadSqr-10000)) then
                 table.insert(waterTiles, {name = "grass-1", position ={i,j}})
             end
@@ -949,7 +980,7 @@ function CreateWaterStrip(surface, leftPos, length)
         table.insert(waterTiles, {name = "water", position={leftPos.x+i,leftPos.y}})
     end
     surface.set_tiles(waterTiles)
-end 
+end
 
 -- Function to generate a resource patch, of a certain size/amount at a pos.
 function GenerateResourcePatch(surface, resourceName, diameter, pos, amount)
