@@ -63,7 +63,7 @@ OE_TECH_LEVEL_PEAK_COUNT = 200
 OE_BUILDING_SAFE_AREA_RADIUS = 4
 
 -- Attack timer, scales with activity (mining and smelting)
-OE_MAX_TIME_BETWEEN_ATTACKS_MINS = 30
+OE_MAX_TIME_BETWEEN_ATTACKS_MINS = 60
 OE_MIN_TIME_BETWEEN_ATTACKS_MINS = 3
 
 -- Timer backoff on destroyed buildings
@@ -76,21 +76,11 @@ OE_ATTACK_SEARCH_RADIUS_CHUNKS = 40
 
 
 -- These are the types of targetted attacks that can be requested.
-OE_TARGET_TYPE_SCIENCE      = 0     -- Attack random science labs.
-OE_TARGET_TYPE_MINERS       = 1     -- Attack random miners.
-OE_TARGET_TYPE_PLAYER       = 2     -- Attack a player.
-OE_TARGET_TYPE_SMELTERS     = 3     -- Attack a random smelters.
-OE_TARGET_TYPE_STEAM        = 4     -- Attack a steam power production
-OE_TARGET_TYPE_NUCLEAR      = 5     -- Attack a nuclear power production
-OE_TARGET_TYPE_SOLAR        = 6     -- Attack a solar power production
-OE_TARGET_TYPE_ASSMBLR      = 7     -- Attack assembly machines
-OE_TARGET_TYPE_SILO         = 8     -- Attack a rocket silo
-OE_TARGET_TYPE_PWR_POLE     = 9     -- Attack the tall power poles
-OE_TARGET_TYPE_TURRETS      = 10    -- Attack turrets (gun/laser/flame)
-OE_TARGET_TYPE_RADAR        = 11    -- Attack radars
-OE_TARGET_TYPE_ARTY         = 12    -- Attack artillery (trains/turrets)
-OE_TARGET_TYPE_DSTRYD       = 13    -- Attack areas where buildings are being destroyed (reinforce)
-OE_TARGET_TYPE_AREA         = 14    -- Attacking a general area is used as a fallback.
+OE_TARGET_TYPE_PLAYER       = 1     -- Attack a player.
+OE_TARGET_TYPE_AREA         = 2     -- Attacking a general area is used as a fallback.
+OE_TARGET_TYPE_BUILDING     = 3     -- Attack a building of a certain type.
+OE_TARGET_TYPE_DSTRYD       = 4     -- Attack areas where buildings are being destroyed (reinforce)
+OE_TARGET_TYPE_ENTITY       = 5     -- Any attack on a specific entity. Like a retaliation attack.
 
 -- This is the general flow of steps that an attack will go through
 OE_PROCESS_STG_FIND_TARGET      = 0     -- First step is finding a target based on the request type.
@@ -105,30 +95,31 @@ OE_PROCESS_STG_FALLBACK_ATTACK  = 8     -- Fallback to attacking local area
 OE_PROCESS_STG_FALLBACK_FINAL   = 9     -- Final fallback is go autonomous
 OE_PROCESS_STG_RETRY_PATH_REQ   = 10    -- This means we had a group, that failed during transit, so we want to retry path checks.
 OE_PROCESS_STG_RETRY_PATH_CALC  = 11    -- Pathing is pending from OE_PROCESS_STG_RETRY_PATH_REQ
-
+OE_PROCESS_STG_BUILD_BASE       = 12    -- Sometimes we build bases. Like if an attack was successful.
 
 -- Just set the target player and type, and then the processing takes over
 -- and attempts to create an attack...
 -- attack_request_example = {
---      target_player=player_name,  -- REQUIRED (Player Name)
---      target_type=TYPE,           -- REQUIRED (OE_ATTACK_TYPE)
---      attempts=3,                 -- REQUIRED (Must be at least 1! Otherwise it won't do anything.)
---      process_stg=TYPE,           -- STARTS WITH OE_PROCESS_STG_FIND_TARGET
---      target_entity=lua_entity,   -- Depends on attack type. Calculated during request processing.
---      target_chunk=c_pos,         -- Depends on attack type. Calculated during request processing.
---      size=x,                     -- Calculated during request processing.
---      evo=x,                      -- Calculated during request processing.
---      spawn_chunk=spawn_chunk,    -- Calculated during request processing.
---      path_id=path_request_id,    -- Set during request processing.
---      path=path,                  -- Set by on_script_path_request_finished.
---      group_id=group_id,          -- Set during request processing.
---      group=lua_unit_group        -- The group created to handle the attack
+--      target_player=player_name,      -- REQUIRED (Player Name)
+--      target_type=TYPE,               -- REQUIRED (OE_ATTACK_TYPE)
+--      attempts=3,                     -- REQUIRED (Must be at least 1! Otherwise it won't do anything.)
+--      process_stg=TYPE,               -- REQUIRED STARTS WITH OE_PROCESS_STG_FIND_TARGET
+--      building_types=entity_types,    -- REQUIRED if attack request is for a building.
+--      target_entity=lua_entity,       -- Depends on attack type. Calculated during request processing.
+--      target_chunk=c_pos,             -- Depends on attack type. Calculated during request processing.
+--      size=x,                         -- Calculated during request processing.
+--      evo=x,                          -- Calculated during request processing.
+--      spawn_chunk=spawn_chunk,        -- Calculated during request processing.
+--      path_id=path_request_id,        -- Set during request processing.
+--      path=path,                      -- Set by on_script_path_request_finished.
+--      group_id=group_id,              -- Set during request processing.
+--      group=lua_unit_group            -- The group created to handle the attack
 -- }
 
 
 -- Adapted from:
 -- https://stackoverflow.com/questions/3706219/algorithm-for-iterating-over-an-outward-spiral-on-a-discrete-2d-grid-from-the-or
-function SpiralSearch(starting_c_pos, max_radius, check_function)
+function SpiralSearch(starting_c_pos, max_radius, max_count, check_function)
 
     local dx = 1
     local dy = 0
@@ -138,6 +129,8 @@ function SpiralSearch(starting_c_pos, max_radius, check_function)
     local y = starting_c_pos.y
     local segment_passed = 0
 
+    local found = {}
+
     for i=1,(math.pow(max_radius*2+1, 2)) do
 
         if (true == check_function({x=x, y=y})) then
@@ -146,7 +139,8 @@ function SpiralSearch(starting_c_pos, max_radius, check_function)
                                                 text=x..","..y})
                                                 -- icon={type="item",name="rocket-silo"}})
             SendBroadcastMsg("SpiralSearch: " .. x .. "," .. y)
-            return {x=x, y=y}
+            table.insert(found, {x=x, y=y})
+            if (#found >= max_count) then return found end
         end
 
         x = x + dx;
@@ -167,8 +161,12 @@ function SpiralSearch(starting_c_pos, max_radius, check_function)
         end
     end
 
-    SendBroadcastMsg("SpiralSearch Failed? " .. x .. "," .. y)
-    return nil
+    if (#found == 0) then
+        SendBroadcastMsg("SpiralSearch Failed? " .. x .. "," .. y)
+        return nil
+    else
+        return found
+    end
 end
 
 
@@ -283,18 +281,20 @@ function OarcEnemiesScienceLabAttack(force_name)
 
     -- For each player, find a random science lab,
     for _,player in pairs(game.connected_players) do
-        if (player.force.name == force_name) and
-            (global.oarc_enemies.buildings[player.name]["lab"]) and
-            (#global.oarc_enemies.buildings[player.name]["lab"] > 0) then
-
-            local science_attack = {target_player = player.name,
-                                    target_type = OE_TARGET_TYPE_SCIENCE,
-                                    attempts=3,
-                                    process_stg=OE_PROCESS_STG_FIND_TARGET}
-            SendBroadcastMsg("Science Lab Attack!")
-            table.insert(global.oarc_enemies.attacks, science_attack)
+        if (player.force.name == force_name) then
+            OarcEnemiesBuildingAttack(player.name, "lab")
         end
     end
+end
+
+function OarcEnemiesBuildingAttack(player_name, entity_type)
+    local building_attack = {target_player = player_name,
+                            target_type = OE_TARGET_TYPE_BUILDING,
+                            attempts=3,
+                            process_stg=OE_PROCESS_STG_FIND_TARGET,
+                            building_types=entity_type}
+    SendBroadcastMsg("Building Attack: " .. serpent.block(entity_type))
+    table.insert(global.oarc_enemies.attacks, building_attack)
 end
 
 -- Attack a player
@@ -349,17 +349,15 @@ function OarcEnemiesChunkGenerated(event)
 
     local enough_land = true
 
-    -- Check if there is lots of water
-    local water_tiles = game.surfaces[1].find_tiles_filtered{area = event.area, collision_mask = "water-tile", limit=200}
-    if (#water_tiles > 200) then
+    -- Check if there is any water in the chunk.
+    local water_tiles = game.surfaces[1].find_tiles_filtered{area = event.area, collision_mask = "water-tile", limit=5}
+    if (#water_tiles >= 5) then
         enough_land = false
     end
 
     -- Check if it has spawners
     local spawners = game.surfaces[1].find_entities_filtered{area=event.area,
-                                                                name={"biter-spawner",
-                                                                "spitter-spawner"},
-                                                                type="unit-spawner",
+                                                                type={"unit-spawner", "turret"},
                                                                 force="enemy"}
 
     -- If this is the first chunk in that row:
@@ -466,6 +464,102 @@ function OarcEnemiesIsChunkValidSpawn(c_pos)
     return true
 end
 
+-- function OarcEnemiesEntityDiedEvent(event)
+
+--     -- Validate
+--     if (not event.entity or
+--         not (event.entity.force.name == "enemy") or
+--         not (event.cause or event.force)) then return end
+
+--     -- Enemy spawners/turrets
+--     if (not (event.entity.type == "unit-spawner")) and
+--         (not (event.entity.type == "turret")) then return end
+
+--     local death_attack = {attempts=1,
+--                             process_stg=OE_PROCESS_STG_SPAWN_PATH_REQ,
+--                             spawn_chunk=GetChunkPosFromTilePos(event.entity.position),
+--                             evo=0.5,
+--                             size=5}
+
+--     -- If there is just a force, then just attack the area.
+--     if (not event.cause) then
+--         SendBroadcastMsg("Spawner died ONLY FORCE!")
+
+--         -- death_attack.process_stg = OE_PROCESS_STG_SPAWN_PATH_REQ
+--         -- death_attack.target_player = nil
+--         death_attack.target_type = OE_TARGET_TYPE_AREA
+--         death_attack.target_chunk = GetChunkPosFromTilePos(event.entity.position)
+--         death_attack.evo = 0.5
+--         death_attack.size = 5
+
+--     -- If we have a cause, go attack that cause.
+--     else
+--         SendBroadcastMsg("Spawner died HAS CAUSE!")
+
+--         local player = nil
+--         if (event.cause.type == "character") then
+--             player  = event.cause.player
+--         elseif (event.cause.last_user) then
+--             player  = event.cause.last_user
+--         end
+
+--         -- No attacks on offline player
+--         if (not player or not player.connected) then return end
+
+--         -- death_attack.process_stg = OE_PROCESS_STG_CREATE_GROUP
+--         -- death_attack.target_player = nil
+--         death_attack.target_type = OE_TARGET_TYPE_ENTITY
+--         -- death_attack.target_type = OE_TARGET_TYPE_AREA
+--         death_attack.target_entity = player.character
+--         death_attack.target_chunk = GetChunkPosFromTilePos(player.character.position)
+--         death_attack.evo = 0.2
+--         death_attack.size = 10
+--     end
+
+--     SendBroadcastMsg("Spawner died 4!")
+
+--     if (event.entity.type == "unit-spawner") then
+--         SendBroadcastMsg("Spawner died!")
+--     elseif (event.entity.type == "turret") then
+--         SendBroadcastMsg("Worm died!")
+--     end
+
+--     table.insert(global.oarc_enemies.attacks, death_attack)
+-- end
+
+function OarcEnemiesEntityDiedEventImmediateAttack(event)
+
+    -- Validate
+    if (not event.entity or
+        not (event.entity.force.name == "enemy") or
+        not (event.cause or event.force)) then return end
+
+    -- Enemy spawners/turrets
+    if (not (event.entity.type == "unit-spawner")) and
+        (not (event.entity.type == "turret")) then return end
+
+    -- If there is just a force, then just attack the area.
+    if (not event.cause) then
+        SendBroadcastMsg("Spawner died ONLY FORCE!")
+
+
+    -- If we have a cause, attack that cause.
+    else
+        SendBroadcastMsg("Spawner died HAS CAUSE!")
+
+        local player = nil
+        if (event.cause.type == "character") then
+            player  = event.cause.player
+        elseif (event.cause.last_user) then
+            player  = event.cause.last_user
+        end
+
+        -- No attacks on offline player
+        if (not player or not player.connected) then return end
+
+    end
+end
+
 function OarcEnemiesTrackBuildings(e)
 
     SendBroadcastMsg("Building type: " .. e.type)
@@ -476,7 +570,13 @@ function OarcEnemiesTrackBuildings(e)
         (e.type == "reactor") or
         (e.type == "solar-panel") or
         (e.type == "assembling-machine") or
-        (e.type == "generator") then
+        (e.type == "generator") or
+        (e.type == "rocket-silo") or
+        (e.type == "radar") or
+        (e.type == "ammo-turret") or
+        (e.type == "electric-turret") or
+        (e.type == "fluid-turret") or
+        (e.type == "artillery-turret") then
 
         if (e.last_user == nil) then
             SendBroadcastMsg("OarcEnemiesTrackBuildings - entity.last_user is nil! " .. e.name)
@@ -512,19 +612,51 @@ function TestSpawnGroup()
 
 end
 
-function GetRandomScienceLab(player_name)
+function GetRandomBuildingAny(player_name, entity_type_or_types)
+    if (type(entity_type_or_types) == "table") then
+        return GetRandomBuildingMultipleTypes(player_name, entity_type_or_types)
+    else
+        return GetRandomBuildingSingleType(player_name, entity_type_or_types)
+    end
+end
 
-    if (#global.oarc_enemies.buildings[player_name]["lab"] == 0) then
-        SendBroadcastMsg("GetRandomScienceLab - none found")
+function GetRandomBuildingMultipleTypes(player_name, entity_types)
+
+    local rand_list = {}
+    for _,e_type in pairs(entity_types) do
+        rand_building = GetRandomBuildingSingleType(player_name, e_type)
+        if (rand_building) then
+            table.insert(rand_list, rand_building)
+        end
+    end
+    if (#rand_list > 0) then
+        return rand_list[math.random(#rand_list)]
+    else
+        return nil
+    end
+end
+
+function GetRandomBuildingSingleType(player_name, entity_type, count)
+
+    -- We only use this if there are lots of nil entries, likely from destroyed buildings
+    local count = count or 20
+    if (count == 0) then
+        SendBroadcastMsg("GetRandomBuildingSingleType - recursive limit hit")
         return nil
     end
 
-    local rand_key = GetRandomKeyFromTable(global.oarc_enemies.buildings[player_name]["lab"])
-    local random_lab = global.oarc_enemies.buildings[player_name]["lab"][rand_key]
+    if (not global.oarc_enemies.buildings[player_name][entity_type] or
+        (#global.oarc_enemies.buildings[player_name][entity_type] == 0)) then
+        SendBroadcastMsg("GetRandomBuildingSingleType - none found " .. entity_type)
+        return nil
+    end
+
+    local rand_key = GetRandomKeyFromTable(global.oarc_enemies.buildings[player_name][entity_type])
+    local random_lab = global.oarc_enemies.buildings[player_name][entity_type][rand_key]
 
     if (not random_lab or not random_lab.valid) then
-        global.oarc_enemies.buildings[player_name]["lab"][rand_key] = nil
-        return GetRandomScienceLab(player_name)
+        global.oarc_enemies.buildings[player_name][entity_type][rand_key] = nil
+        return GetRandomBuildingSingleType(player_name, entity_type, count-1)
     else
         return random_lab
     end
@@ -544,33 +676,24 @@ function ProcessAttackFindTarget(key, attack)
     if (attack.target_player and
         attack.target_type) then
 
-        -- OE_TARGET_TYPE_SCIENCE
-        -- OE_TARGET_TYPE_MINERS
+
         -- OE_TARGET_TYPE_PLAYER
-        -- OE_TARGET_TYPE_SMELTERS
-        -- OE_TARGET_TYPE_STEAM
-        -- OE_TARGET_TYPE_NUCLEAR
-        -- OE_TARGET_TYPE_SOLAR
-        -- OE_TARGET_TYPE_ASSMBLR
-        -- OE_TARGET_TYPE_SILO
-        -- OE_TARGET_TYPE_PWR_POLE
-        -- OE_TARGET_TYPE_TURRETS
-        -- OE_TARGET_TYPE_RADAR
-        -- OE_TARGET_TYPE_ARTY
         -- OE_TARGET_TYPE_DSTRYD
+        -- OE_TARGET_TYPE_BUILDING
 
-        -- Attack a science lab of the player.
-        if (attack.target_type == OE_TARGET_TYPE_SCIENCE) then
+        -- Attack a building of the player, given a certain building type
+        if (attack.target_type == OE_TARGET_TYPE_BUILDING) then
 
-            local random_lab = GetRandomScienceLab(attack.target_player)
-            if (random_lab ~= nil) then
-                global.oarc_enemies.attacks[key].target_entity = random_lab
+            local random_building = GetRandomBuildingAny(attack.target_player,
+                                                            attack.building_types)
+            if (random_building ~= nil) then
+                global.oarc_enemies.attacks[key].target_entity = random_building
                 global.oarc_enemies.attacks[key].size = 10
                 global.oarc_enemies.attacks[key].evo = 0.3
                 global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_FIND_SPAWN
                 return true
             else
-                SendBroadcastMsg("No labs found to attack.")
+                SendBroadcastMsg("No building found to attack.")
                 global.oarc_enemies.attacks[key] = nil
             end
 
@@ -618,10 +741,10 @@ function ProcessAttackFindSpawn(key, attack)
         elseif (attack.target_chunk) then
             c_pos = attack.target_chunk
         end
-        local spawn = SpiralSearch(c_pos, OE_ATTACK_SEARCH_RADIUS_CHUNKS, OarcEnemiesIsChunkValidSpawn)
+        local spawns = SpiralSearch(c_pos, OE_ATTACK_SEARCH_RADIUS_CHUNKS, 1, OarcEnemiesIsChunkValidSpawn)
 
-        if (spawn ~= nil) then
-            global.oarc_enemies.attacks[key].spawn_chunk = spawn
+        if (spawns ~= nil) then
+            global.oarc_enemies.attacks[key].spawn_chunk = spawns[GetRandomKeyFromTable(spawns)]
             global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_SPAWN_PATH_REQ
         else
             SendBroadcastMsg("Could not find a spawn near target...")
@@ -683,7 +806,7 @@ function ProcessAttackCheckPathFromSpawn(key, attack)
         global.oarc_enemies.attacks[key].path_id = game.surfaces[1].request_path{bounding_box={{0,0},{0,0}},
                                                         collision_mask={"player-layer"},
                                                         start=spawn_pos,
-                                                        goal=attack.target_entity.position,
+                                                        goal=target_pos,
                                                         force=game.forces["enemy"],
                                                         radius=8,
                                                         pathfind_flags={low_priority=true},
@@ -802,21 +925,23 @@ function ProcessAttackCommandGroup(key, attack)
     end
 
     -- Sanity check we have a group and a path
-    if (attack.group_id and attack.path_id and attack.group and attack.group.valid) then
+    if (attack.group_id and attack.group and attack.group.valid) then
 
-        if (attack.target_entity and attack.target_entity.valid) then
-            -- EnemyGroupAttackEntity(attack.group, attack.target_entity)
-            EnemyGroupAttackEntityCompoundCmd(attack.group, attack.target_entity, attack.path)
+        -- If we have a target entity, attack that.
+        if (attack.target_entity and attack.target_entity.valid and attack.path_id) then
+            EnemyGroupGoAttackEntityThenWander(attack.group, attack.target_entity, attack.path)
             global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_GROUP_ACTIVE
             return true
 
+        -- If we have a target chunk, attack that area.
         elseif (attack.target_chunk) then
-            EnemyGroupAttackArea(attack.group,
-                                    GetCenterTilePosFromChunkPos(attack.target_chunk),
-                                    48)
+            EnemyGroupAttackAreaThenWander(attack.group,
+                                            GetCenterTilePosFromChunkPos(attack.target_chunk),
+                                            CHUNK_SIZE*2)
             global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_GROUP_ACTIVE
             return true
 
+        -- Otherwise, shit's fucked
         else
             SendBroadcastMsg("ProcessAttackCommandGroup invalid target?" .. key)
             global.oarc_enemies.attacks[key].path_id = nil
@@ -840,7 +965,7 @@ function ProcessAttackCommandFailed(key, attack)
         return false
     end
 
-    -- If we fail to attack the player, it like means the player moved.
+    -- If we fail to attack the player, it likely means the player moved.
     -- So we try to retry pathing so we can "chase" the player.
     if (attack.target_type == OE_TARGET_TYPE_PLAYER) then
         global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_RETRY_PATH_REQ
@@ -849,7 +974,7 @@ function ProcessAttackCommandFailed(key, attack)
     -- Fallback for all other attack types is to attack the general area instead.
     -- Might add other special cases here later.
     else
-        SendBroadcastMsg("ProcessAttackCommandFailed - performing fallback now " .. event.unit_number)
+        SendBroadcastMsg("ProcessAttackCommandFailed - performing fallback now?")
         global.oarc_enemies.attacks[key].attempts = attack.attempts - 1
         global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_FALLBACK_ATTACK
         return true
@@ -863,9 +988,9 @@ function ProcessAttackFallbackAttack(key, attack)
 
     if (attack.group_id and attack.group and attack.group.valid and attack.target_chunk) then
 
-        EnemyGroupAttackArea(attack.group,
-                              GetCenterTilePosFromChunkPos(attack.target_chunk),
-                              CHUNK_SIZE*2)
+        EnemyGroupAttackAreaThenWander(attack.group,
+                                      GetCenterTilePosFromChunkPos(attack.target_chunk),
+                                      CHUNK_SIZE*2)
         global.oarc_enemies.attacks[key].target_type = OE_TARGET_TYPE_AREA
         global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_GROUP_ACTIVE
     else
@@ -881,14 +1006,19 @@ function ProcessAttackFallbackAuto(key, attack)
 
     if (attack.group and attack.group.valid) then
         SendBroadcastMsg("ProcessAttackFallbackAuto - Group now autonomous...")
-        attack.group.set_autonomous()
+        -- log(serpent.block(attack))
+        log("group-state" .. attack.group.state)
+        -- log(serpent.block(attack.group.members))
+        log(serpent.block(attack.group_id))
+        log("AUTO GAME - TICK: " .. game.tick)
+        -- attack.group.set_autonomous()
+        attack.group.destroy()
     else
         SendBroadcastMsg("ProcessAttackFallbackAuto - Group no longer valid!")
     end
 
     global.oarc_enemies.attacks[key] = nil
-
-    return false
+    return true
 end
 
 function ProcessAttackRetryPath(key, attack)
@@ -902,7 +1032,8 @@ function ProcessAttackRetryPath(key, attack)
         (not attack.target_entity.valid)) then
         SendBroadcastMsg("ProcessAttackRetryPath FAILURE")
         if (attack.group and attack.group.valid) then
-            attack.group.set_autonomous()
+            -- attack.group.set_autonomous()
+            attack.group.destroy()
         end
         global.oarc_enemies.attacks[key] = nil
         return false
@@ -938,12 +1069,18 @@ function ProcessAttackCleanupInvalidGroups(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_GROUP_ACTIVE) then return false end
 
     if (not attack.group or not attack.group.valid) then
-        SendBroadcastMsg("ProcessAttackCleanupInvalidGroups - Group finished?")
+        SendBroadcastMsg("ProcessAttackCleanupInvalidGroups - Group killed?")
         global.oarc_enemies.attacks[key] = nil
+
+    elseif (attack.group.state == defines.group_state.wander_in_group) then
+        SendBroadcastMsg("ProcessAttackCleanupInvalidGroups - Group done?")
+        EnemyGroupBuildBaseThenWander(attack.group, attack.group.position)
+        global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_BUILD_BASE
     end
 
     return false
 end
+
 
 function OarcEnemiesOnTick()
 
@@ -954,35 +1091,11 @@ function OarcEnemiesOnTick()
         end
     end
 
-    -- Randomized player timers generating attacks
-    -- if ((game.tick % (TICKS_PER_SECOND)) == 32) then
-
-    --     for name,timer in pairs(global.oarc_enemies.player_timers) do
-    --         if (global.oarc_enemies["lab"][name] ~= nil) and
-    --             (#global.oarc_enemies["lab"][name] > 0) then
-    --             if (timer <= 0) then
-    --                 SendBroadcastMsg("Attack now?!")
-    --                 attack_example = {target=game.player,
-    --                                     size=10,
-    --                                     evo=0.1,
-    --                                     spawn_chunk=nil,
-    --                                     group_id=nil,
-    --                                     path=nil}
-    --                 table.insert(global.oarc_enemies.attacks, attack_example)
-
-    --                 global.oarc_enemies.player_timers[name] = 30 -- CHANGE THIS TO SOMETHING RANDOM?
-    --             else
-    --                 global.oarc_enemies.player_timers[name] = timer - 1
-    --             end
-    --         end
-    --     end
-
-    -- end
-
+    -- 21
 
     -- OE_PROCESS_STG_FIND_TARGET
     -- Find target given request type
-    if ((game.tick % (TICKS_PER_SECOND)) == 23) then
+    if ((game.tick % (TICKS_PER_SECOND)) == 22) then
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackFindTarget(key, attack) then break end
         end
@@ -1158,176 +1271,132 @@ function FindAttackKeyFromGroupIdNumber(id)
 end
 
 -- Tell a group AND ALL THE UNITS to follow a given command
-function EnemyGroupUnitsDoCommand(group, new_cmd)
+-- function EnemyGroupUnitsDoCommand(group, new_cmd)
 
-    if ((group == nil) or (not group.valid)) then
-        SendBroadcastMsg("EnemyGroupUnitsDoCommand - Invalid group!")
+--     if ((group == nil) or (not group.valid)) then
+--         SendBroadcastMsg("EnemyGroupUnitsDoCommand - Invalid group!")
+--         return
+--     end
+
+--     -- Give the group it's command
+--     group.set_command(new_cmd)
+
+--     -- -- Tell all contained units to follow the group command
+--     -- local unit_cmd = {type = defines.command.group, group = group, distraction = defines.distraction.none}
+--     -- for i,u in ipairs(group.members) do
+--     --     u.set_command(unit_cmd)
+--     -- end
+-- end
+
+
+function EnemyGroupAttackAreaThenWander(group, target_pos, radius)
+
+    if (not group or not group.valid or not target_pos or not radius) then
+        SendBroadcastMsg("EnemyGroupAttackAreaThenWander - Missing params!")
         return
     end
 
-    -- Give the group it's command
-    group.set_command(new_cmd)
+    local combined_commands = {}
 
-    -- -- Tell all contained units to follow the group command
-    -- local unit_cmd = {type = defines.command.group, group = group, distraction = defines.distraction.none}
-    -- for i,u in ipairs(group.members) do
-    --     u.set_command(unit_cmd)
-    -- end
+    -- Attack the target.
+    table.insert(combined_commands, {type = defines.command.attack_area,
+                                        destination = target_pos,
+                                        radius = radius,
+                                        distraction = defines.distraction.by_damage})
+
+    -- Then wander and attack anything in the area
+    table.insert(combined_commands, {type = defines.command.wander,
+                                        distraction = defines.distraction.by_enemy})
+
+    -- Execute all commands in sequence regardless of failures.
+    local compound_command =
+    {
+        type = defines.command.compound,
+        structure_type = defines.compound_command.return_last,
+        commands = combined_commands
+    }
+
+    group.set_command(compound_command)
 end
 
--- Tell a unit group to attack a given area
-function EnemyGroupAttackArea(group, destination, radius)
-    local attack_area_cmd = {type = defines.command.attack_area, destination = destination, radius = radius, distraction = defines.distraction.damage}
-    EnemyGroupUnitsDoCommand(group, attack_area_cmd)
-end
+function EnemyGroupGoAttackEntityThenWander(group, target, path)
 
-function EnemyGroupAttackEntity(group, target)
-    local attack_entity_cmd = {type = defines.command.attack, target = target, distraction = defines.distraction.damage}
-    EnemyGroupUnitsDoCommand(group, attack_entity_cmd)
-end
-
-function EnemyGroupAttackEntityCompoundCmd(group, target, path)
-
-    if ((group == nil) or (target == nil)) then
-        SendBroadcastMsg("EnemyGroupAttackEntityCompoundCmd - Invalid group/target!")
+    if (not group or not group.valid or not target or not path) then
+        SendBroadcastMsg("EnemyGroupPathAttandThenWander - Missing params!")
         return
     end
 
-    local distraction = defines.distraction.by_damage
+    local combined_commands = {}
 
-    -- Add all the waypoints in order I hope.
-    local waypoint_cmds = {}
-    if (#path > 200) then
-        local i = 200
-        while (path[i] ~= nil) do
-            table.insert(waypoint_cmds, {type = defines.command.go_to_location,
-                                        destination = path[i].position,
-                                        distraction = distraction})
-            i = i + 200
-        end
+    -- Add waypoints for long paths.
+    -- Based on number of segments in the path.
+    local i = 100
+    while (path[i] ~= nil) do
+        SendBroadcastMsg("Adding path " .. i)
+        table.insert(combined_commands, {type = defines.command.go_to_location,
+                                            destination = path[i].position,
+                                            pathfind_flags={low_priority=true},
+                                            radius = 5,
+                                            distraction = defines.distraction.by_damage})
+        game.forces["player"].add_chart_tag(game.surfaces[1],
+                                            {position=path[i].position,
+                                            text="path"})
+        i = i + 100
+    end
+
+    -- Then attack the target.
+    table.insert(combined_commands, {type = defines.command.attack,
+                                        target = target,
+                                        distraction = defines.distraction.by_damage})
+
+    -- Even if target dies, we should go to it's last known location.
+    -- table.insert(combined_commands, {type = defines.command.go_to_location,
+    --                                     destination = target.position,
+    --                                     pathfind_flags={low_priority=true},
+    --                                     radius = 5,
+    --                                     distraction = defines.distraction.by_damage})
+
+    -- Then wander and attack anything in the area
+    table.insert(combined_commands, {type = defines.command.wander,
+                                        distraction = defines.distraction.by_anything})
+
+    -- Execute all commands in sequence regardless of failures.
+    local compound_command =
+    {
+        type = defines.command.compound,
+        structure_type = defines.compound_command.return_last,
+        commands = combined_commands
+    }
+
+    group.set_command(compound_command)
+end
+
+function EnemyGroupBuildBaseThenWander(group, target_pos)
+
+    if (not group or not group.valid or not target_pos) then
+        SendBroadcastMsg("EnemyGroupBuildBase - Invalid group or missing target!")
+        return
     end
 
 
-    -- Last step is the attacking of the target
-    local attack_entity_cmd =
-    {
-        type = defines.command.attack,
-        target = target,
-        distraction = distraction
-    }
+    local combined_commands = {}
 
-    local wander_cmd =
-    {
-        type = defines.command.wander,
-        -- wander_in_group = false,
-        -- ticks_to_wait = 60*10,
-        distraction = distraction
-    }
+    -- Build a base
+    table.insert(combined_commands, {type = defines.command.build_base,
+                                        destination = target_pos,
+                                        distraction = defines.distraction.by_damage})
 
-    -- A build a base command
-    local build_base =
-    {
-        type = defines.command.build_base,
-        destination = {0,0},
-        distraction = distraction,
-        ignore_planner = true
-    }
+    -- Last resort is wander and attack anything in the area
+    table.insert(combined_commands, {type = defines.command.wander,
+                                        distraction = defines.distraction.by_anything})
 
-    table.insert(waypoint_cmds, attack_entity_cmd)
-    table.insert(waypoint_cmds, wander_cmd)
-    -- table.insert(waypoint_cmds, build_base)
-
-    -- Make this a compound command that attempts to execute all commands?
-    local move_attack_comp_cmd =
-    {
-        type = defines.command.compound,
-        -- structure_type = defines.compound_command.logical_and,
-        structure_type = defines.compound_command.return_last,
-        commands = waypoint_cmds
-    }
-
-
-
-    local fallback_comp_cmd =
+    -- Execute all commands in sequence regardless of failures.
+    local compound_command =
     {
         type = defines.command.compound,
         structure_type = defines.compound_command.return_last,
-        commands = {
-            move_attack_comp_cmd,
-            build_base
-        }
+        commands = combined_commands
     }
 
-    EnemyGroupUnitsDoCommand(group, move_attack_comp_cmd)
+    group.set_command(compound_command)
 end
-
-
--- Tell a unit group to just do it's normal attack run at the closest pollution source.
-function EnemyGroupDefaultBehavior(group)
-    group.set_autonomous()
-end
-
-
-
-
-
--- local group
--- local comp_cmd =    {
---                         type = defines.command.compound,
---                         structure_type = defines.compound_command.return_last,
---                         commands =
---                         {
---                             {type = defines.command.attack_area, destination = {x=-50, y=-50}, radius = 10, distraction = defines.distraction.none},
---                             {type = defines.command.wander, distraction = defines.distraction.none}
---                         }
---                     }
--- local group_cmd = {type = defines.command.go_to_location, destination = {x=-50, y=-50}, distraction = defines.distraction.none}
-
-
-
--- commands.add_command("spawn_group", "spawn a group", function(command)
-
---     local surface = game.surfaces[1]
---     local group_position = {x=50, y=50}
---     local biter_name = "small-biter"
-
---     group = surface.create_unit_group{position = group_position}
-
---     for i=1,10 do
---         local unit_position = surface.find_non_colliding_position(biter_name, group_position, 32, 2)
---         if (unit_position) then
---             group.add_member(surface.create_entity{name = biter_name, position = unit_position})
---         end
---     end
--- end)
-
-
--- commands.add_command("kill_group", "kill a group", function(command)
---     if (group ~= nil) then
---         group.destroy()
---     end
--- end)
-
--- commands.add_command("move_group", "move a group", function(command)
-
---     if (group ~= nil) then
---         group.set_command(comp_cmd)
-
---         local unit_cmd = {type = defines.command.group, group = group, distraction = defines.distraction.none}
-
---         for i,u in ipairs(group.members) do
---             u.set_command(unit_cmd)
---         end
-
---     end
-
-
--- end)
-
--- commands.add_command("group_info", "info about a group", function(command)
---     if (group) then
---         game.player.print(group.position)
---         game.player.print(group.state)
---     end
--- end)
-

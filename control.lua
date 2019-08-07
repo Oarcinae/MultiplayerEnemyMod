@@ -1,7 +1,7 @@
 -- control.lua
 -- Sep 2018
 
--- Oarc's New Scenario
+-- Oarc's Enemies
 --
 -- Feel free to re-use anything you want. It would be nice to give me credit
 -- if you can.
@@ -130,7 +130,7 @@ script.on_event(defines.events.on_player_respawned, function(event)
 end)
 
 script.on_event(defines.events.on_player_joined_game, function(event)
-    OarcEnemiesGui(event)
+    OarcEnemiesCreateGui(event)
 end)
 
 script.on_event(defines.events.on_gui_click, function(event)
@@ -148,10 +148,12 @@ script.on_event(defines.events.on_chunk_deleted, function(event)
     OarcEnemiesChunkDeleted(event)
 end)
 
-
 script.on_event({defines.events.on_robot_built_entity,defines.events.on_built_entity}, function (event)
     local e = event.created_entity
-    if ((e.type ~= "car") and (e.type ~= "logistic-robot") and (e.type ~= "construction-robot")) then
+    if ((e.type ~= "car") and
+        (e.type ~= "logistic-robot") and
+        (e.type ~= "construction-robot") and
+        (e.type ~= "combat-robot")) then
         OarcEnemiesChunkHasPlayerBuilding(e.position)
     end
     OarcEnemiesTrackBuildings(e)
@@ -171,6 +173,11 @@ script.on_event(defines.events.on_entity_spawned, function(event)
     event.entity.destroy()
 end)
 
+script.on_event(defines.events.on_entity_died, function(event)
+    OarcEnemiesEntityDiedEvent(event)
+end)
+
+
 script.on_event(defines.events.on_unit_group_created, function(event)
     OarcEnemiesGroupCreatedEvent(event)
 end)
@@ -178,23 +185,16 @@ end)
 script.on_event(defines.events.on_unit_removed_from_group, function(event)
     SendBroadcastMsg("Unit removed from group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
 
+    -- Force the unit back into its group or kill it.
     if (event.group and event.group.valid) then
         event.group.add_member(event.unit)
     else
         event.unit.die(nil, event.unit)
     end
-    -- event.unit.die(nil, event.unit)
-    -- local build_a_base =
-    -- {
-    --     type = defines.command.build_base,
-    --     destination = event.unit.position,
-    --     distraction = defines.distraction.by_damage,
-    --     ignore_planner = true
-    -- }
-    -- event.unit.set_command(build_a_base)
 end)
 
 script.on_event(defines.events.on_unit_added_to_group, function(event)
+    -- Maybe use this to track all units I've created so I can clean up later if needed?
     -- SendBroadcastMsg("Unit added to group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
 end)
 
@@ -202,6 +202,8 @@ script.on_event(defines.events.on_ai_command_completed, function(event)
     SendBroadcastMsg("AI cmd completed? " .. event.unit_number .. " : " .. event.result)
 
     if (event.result == defines.behavior_result.fail) then
+        log("AI_FAIL GAME - TICK: " .. game.tick)
+        log("AI_FAIL unit number: " .. event.unit_number)
         OarcEnemiesGroupCmdFailed(event)
     end
 end)
@@ -223,78 +225,4 @@ end)
 
 script.on_event(defines.events.on_force_created, function(event)
     OarcEnemiesForceCreated(event)
-end)
-
-
-
-local group
-local comp_cmd =    {
-                        type = defines.command.compound,
-                        structure_type = defines.compound_command.return_last,
-                        commands =
-                        {
-                            {type = defines.command.attack_area, destination = {x=-50, y=-50}, radius = 10, distraction = defines.distraction.by_enemy},
-                            {type = defines.command.wander, distraction = defines.distraction.none}
-                        }
-                    }
-local group_cmd = {type = defines.command.go_to_location, destination = {x=-50, y=-50}, distraction = defines.distraction.by_enemy}
-
-
-
-commands.add_command("spawn_group", "spawn a group", function(command)
-
-    local surface = game.surfaces[1]
-    local group_position = {x=50, y=50}
-
-    local chance_list = CalculateEvoChanceListBiters(0.3)
-
-    units = {}
-    for i=1,10 do
-        table.insert(units, GetEnemyFromChanceList(chance_list))
-    end
-
-    group = CreateEnemyGroup(surface, group_position, units)
-end)
-
-
-commands.add_command("kill_group", "kill a group", function(command)
-
-    if ((group == nil) or (not group.valid)) then
-        return
-    end
-
-    for i,u in ipairs(group.members) do
-        u.destroy()
-    end
-    group.destroy()
-
-end)
-
-commands.add_command("move_group", "move a group", function(command)
-
-    if ((group == nil) or (not group.valid)) then
-        return
-    end
-
-    group.set_command(comp_cmd)
-
-    local unit_cmd = {type = defines.command.group, group = group, distraction = defines.distraction.none}
-
-    for i,u in ipairs(group.members) do
-        u.set_command(unit_cmd)
-    end
-end)
-
-commands.add_command("group_info", "info about a group", function(command)
-    if ((group == nil) or (not group.valid)) then
-        return
-    end
-
-    SendBroadcastMsg(group.position)
-    SendBroadcastMsg(group.state)
-
-end)
-
-commands.add_command("test_evo", "test", function(command)
-    CalculateEvoChanceList(0.3)
 end)

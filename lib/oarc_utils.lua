@@ -54,7 +54,9 @@ function TimeoutSpeechBubblesOnTick()
         if (global.oarc_speech_bubbles and (#global.oarc_speech_bubbles > 0)) then
             for k,sp in pairs(global.oarc_speech_bubbles) do
                 if (game.tick > sp.timeout_tick) then
-                    sp.entity.start_fading_out()
+                    if (sp.entity ~= nil) and (sp.entity.valid) then
+                        sp.entity.start_fading_out()
+                    end
                     global.oarc_speech_bubbles[k] = nil
                 end
             end

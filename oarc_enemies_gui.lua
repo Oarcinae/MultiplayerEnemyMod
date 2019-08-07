@@ -4,7 +4,7 @@
 
 require("mod-gui")
 
-function OarcEnemiesGui(event)
+function OarcEnemiesCreateGui(event)
     local player = game.players[event.player_index]
     if mod_gui.get_button_flow(player).oarc_enemies == nil then
         mod_gui.get_button_flow(player).add{name="oarc_enemies", type="button", caption="OE", style=mod_gui.button_style}
@@ -20,6 +20,9 @@ local function ExpandOarcEnemiesGui(player)
 
         frame.add{type="button", caption="Player Attack", name="oe_attack_player"}
         frame.add{type="button", caption="Science Labs Attack", name="oe_attack_labs"}
+        frame.add{type="button", caption="Furnace Attack", name="oe_attack_furnace"}
+        frame.add{type="button", caption="Mining Attack", name="oe_attack_mining"}
+        frame.add{type="button", caption="Turret Attack", name="oe_attack_turret"}
 
         local oe_info="General Info:" .. "\n" ..
                         -- "Units: " .. #global.oarc_enemies.units .. "\n" ..
@@ -28,7 +31,6 @@ local function ExpandOarcEnemiesGui(player)
                         "Tech levels: " .. global.oarc_enemies.tech_levels[player.force.name] .. "\n" ..
                         "Timer: " .. global.oarc_enemies.player_timers[player.name]
         AddLabel(frame, "oe_info", oe_info, my_longer_label_style)
-
     end
 end
 
@@ -48,5 +50,23 @@ function OarcEnemiesGuiClick(event)
     if (name == "oe_attack_labs") then
         OarcEnemiesScienceLabAttack(player.force.name)
     end
+
+    if (name == "oe_attack_furnace") then
+        OarcEnemiesBuildingAttack(player.name, "furnace")
+    end
+
+    if (name == "oe_attack_mining") then
+        OarcEnemiesBuildingAttack(player.name, "mining-drill")
+    end
+
+    if (name == "oe_attack_turret") then
+        OarcEnemiesBuildingAttack(player.name, {"ammo-turret",
+                                                "electric-turret",
+                                                "fluid-turret",
+                                                "artillery-turret"})
+    end
+
+
+
 
 end
