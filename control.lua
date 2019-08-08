@@ -1,7 +1,7 @@
 -- control.lua
--- Sep 2018
+-- Aug 2019
 
--- Oarc's Enemies
+-- Oarc's Enemies Mod
 --
 -- Feel free to re-use anything you want. It would be nice to give me credit
 -- if you can.
@@ -37,6 +37,35 @@
 --  Request pathing.
 --  On successful pathing found, generate enemy unit group (with applied scaling factors)
 --  Unit group attempts to path to each waypoint and reach the end target
+
+-- General ideas for this mod:
+--  No attacks are started on a player's stuff while they are offline.
+--  Spawners don't send out attack groups based on pollution anymore.
+--  Research complete generates attacks (except first few maybe)
+--      Attacks target your science buildings.
+--  Silo built and rocket launch generate attacks
+--      Attacks target your silos.
+--  Regular attacks based on a randomized timer
+--      Attack pollution sources / players
+--  Random attacks on radars or other military targets
+--  Very very random attacks on tall power poles that are near train train tracks :)
+--  Attack size/evo are based on a force's tech level,
+--      number of players on the team,
+--      and pollution in the target area.
+--  There will still be some kind of incentive to clearing out bases,
+--      attacks might still come from spawners, so if you're on an island you could be safe.
+
+-- Attack Evo determined by (tech level and time):
+--      player online time (at 20 hours, evo + 0.5)
+--      tech level (at 200 techlevels done, evo + 1.0)
+-- Attack Count determined by (local pollution levels + tech):
+--      pollution in target chunk (+10 * chunk pollution / 1000) (capped at 50?)
+--      tech level (+10 * techlevels / 40) (capped at 50?)
+-- Attack frequency determined by (activity):
+--      Raw resources being mined
+--      Key items being produced (iron plates / copper plates / circuits / steel)
+-- If lots of buildings destroyed:
+--      Scale back evo and size limits temporarily. Some kind of backoff?
 
 
 -- Globals for tracking:
@@ -106,20 +135,19 @@ PLAYER_RESPAWN_START_ITEMS = {
 require("lib/oarc_utils")
 
 -- Required Includes
+require("oarc_enemies_defines")
+require("oarc_enemies_evo")
 require("oarc_enemies")
 require("oarc_enemies_gui")
+require("oarc_enemies_tick_logic")
 
 -- DEBUG prints for me
 global.oarcDebugEnabled = true
 
 
-----------------------------------------
--- On Init - only runs once (hopefully)
-----------------------------------------
 script.on_init(function(event)
     InitOarcEnemies() -- Setup global tables and such
 end)
-
 
 script.on_event(defines.events.on_player_created, function(event)
     PlayerSpawnItems(event)
@@ -137,15 +165,8 @@ script.on_event(defines.events.on_gui_click, function(event)
     OarcEnemiesGuiClick(event)
 end)
 
-
-----------------------------------------
--- Chunk Generation/Deletion
-----------------------------------------
 script.on_event(defines.events.on_chunk_generated, function(event)
     OarcEnemiesChunkGenerated(event)
-end)
-script.on_event(defines.events.on_chunk_deleted, function(event)
-    OarcEnemiesChunkDeleted(event)
 end)
 
 script.on_event({defines.events.on_robot_built_entity,defines.events.on_built_entity}, function (event)
@@ -159,15 +180,11 @@ script.on_event({defines.events.on_robot_built_entity,defines.events.on_built_en
     OarcEnemiesTrackBuildings(e)
 end)
 
-
 script.on_event(defines.events.script_raised_built, function(event)
     OarcEnemiesChunkHasPlayerBuilding(event.entity.position)
 end)
 
-----------------------------------------
--- On Entity Spawned
--- This is where I modify biter spawning based on location and other factors.
-----------------------------------------
+
 script.on_event(defines.events.on_entity_spawned, function(event)
     -- Stop enemies from being created normally:
     event.entity.destroy()
@@ -177,33 +194,22 @@ script.on_event(defines.events.on_entity_died, function(event)
     OarcEnemiesEntityDiedEvent(event)
 end)
 
-
 script.on_event(defines.events.on_unit_group_created, function(event)
     OarcEnemiesGroupCreatedEvent(event)
 end)
 
 script.on_event(defines.events.on_unit_removed_from_group, function(event)
-    SendBroadcastMsg("Unit removed from group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
-
-    -- Force the unit back into its group or kill it.
-    if (event.group and event.group.valid) then
-        event.group.add_member(event.unit)
-    else
-        event.unit.die(nil, event.unit)
-    end
+    OarcEnemiesUnitRemoveFromGroupEvent(event)
 end)
 
-script.on_event(defines.events.on_unit_added_to_group, function(event)
+-- script.on_event(defines.events.on_unit_added_to_group, function(event)
     -- Maybe use this to track all units I've created so I can clean up later if needed?
     -- SendBroadcastMsg("Unit added to group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
-end)
+-- end)
 
 script.on_event(defines.events.on_ai_command_completed, function(event)
     SendBroadcastMsg("AI cmd completed? " .. event.unit_number .. " : " .. event.result)
-
     if (event.result == defines.behavior_result.fail) then
-        log("AI_FAIL GAME - TICK: " .. game.tick)
-        log("AI_FAIL unit number: " .. event.unit_number)
         OarcEnemiesGroupCmdFailed(event)
     end
 end)
