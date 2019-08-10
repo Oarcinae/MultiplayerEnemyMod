@@ -5,14 +5,10 @@
 
 
 -- Max number of ongoing attacks at any time.
-OE_ATTACKS_MAX = 50
+OE_ATTACKS_MAX = 30
 
 -- Number of chunks around any building that don't allow enemy spawns.
 OE_BUILDING_SAFE_AREA_RADIUS = 4
-
--- Attack timer, scales with activity? (mining and smelting)
-OE_MAX_TIME_BETWEEN_ATTACKS_MINS = 30
-OE_MIN_TIME_BETWEEN_ATTACKS_MINS = 3
 
 -- Timer backoff on destroyed buildings
 -- Evo backoff on destroyed buildings
@@ -49,21 +45,22 @@ oe_params = {
     attack_size_min = 1,
     attack_size_max = 150,
 
-    player_time_evo_factor = 0.4,
-    player_time_size_factor = 50,
+    player_time_evo_factor = 0.5,
+    player_time_size_factor = 30,
     player_time_peak_hours = 20,
 
-    pollution_evo_factor = 0.4,
-    pollution_size_factor = 50,
-    pollution_peak_amnt = 5000,
+    pollution_evo_factor = 0.3,
+    pollution_size_factor = 80,
+    pollution_peak_amnt = 4000,
 
-    tech_evo_factor = 0.6,
-    tech_size_factor = 50,
-    tech_peak_count = 200,
+    tech_evo_factor = 0.85,
+    tech_size_factor = 30,
+    tech_peak_count = 180,
 
     rand_evo_amnt = 0.15, -- Up to + this amount
-    rand_size_amnt = 8, -- Up to + this amount
+    rand_size_amnt = 10, -- Up to + this amount
 
-    minutes_between_attacks_min = 3,
-    minutes_between_attacks_max = 30,
+    seconds_between_attacks_min = 5*6,
+    seconds_between_attacks_max = 30*6,
+    seconds_between_attacks_rand = 4*6
 }

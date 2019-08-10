@@ -19,6 +19,7 @@ local function ExpandOarcEnemiesGui(player)
         local frame = mod_gui.get_frame_flow(player).add{type="frame", name="oe-panel", caption="Oarc's Enemies:", direction = "vertical"}
 
         frame.add{type="button", caption="Player Attack", name="oe_attack_player"}
+        frame.add{type="button", caption="General Attack", name="oe_attack_any"}
         frame.add{type="button", caption="Science Labs Attack", name="oe_attack_labs"}
         frame.add{type="button", caption="Furnace Attack", name="oe_attack_furnace"}
         frame.add{type="button", caption="Mining Attack", name="oe_attack_mining"}
@@ -44,7 +45,19 @@ function OarcEnemiesGuiClick(event)
     end
 
     if (name == "oe_attack_player") then
-        OarcEnemiesPlayerAttack(player.name)
+        OarcEnemiesPlayerAttackCharacter(player.name)
+    end
+
+    if (name == "oe_attack_any") then
+        OarcEnemiesBuildingAttack(player.name, {"ammo-turret",
+                                                "electric-turret",
+                                                "fluid-turret",
+                                                "artillery-turret",
+                                                "mining-drill",
+                                                "furnace",
+                                                "reactor",
+                                                "assembling-machine",
+                                                "generator"})
     end
 
     if (name == "oe_attack_labs") then

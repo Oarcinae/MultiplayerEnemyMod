@@ -188,17 +188,21 @@ end)
 script.on_event(defines.events.on_entity_spawned, function(event)
     -- Stop enemies from being created normally:
     event.entity.destroy()
+    log("on_entity_spawned")
 end)
 
 script.on_event(defines.events.on_entity_died, function(event)
+    log("on_entity_died")
     OarcEnemiesEntityDiedEvent(event)
 end)
 
 script.on_event(defines.events.on_unit_group_created, function(event)
+    log("on_unit_group_created")
     OarcEnemiesGroupCreatedEvent(event)
 end)
 
 script.on_event(defines.events.on_unit_removed_from_group, function(event)
+    log("on_unit_removed_from_group")
     OarcEnemiesUnitRemoveFromGroupEvent(event)
 end)
 
@@ -208,6 +212,7 @@ end)
 -- end)
 
 script.on_event(defines.events.on_ai_command_completed, function(event)
+    log("on_ai_command_completed")
     SendBroadcastMsg("AI cmd completed? " .. event.unit_number .. " : " .. event.result)
     if (event.result == defines.behavior_result.fail) then
         OarcEnemiesGroupCmdFailed(event)
@@ -220,6 +225,7 @@ script.on_event(defines.events.on_tick, function(event)
 end)
 
 script.on_event(defines.events.on_script_path_request_finished, function(event)
+    log("on_script_path_request_finished")
     ProcessAttackCheckPathComplete(event)
 end)
 
@@ -231,4 +237,12 @@ end)
 
 script.on_event(defines.events.on_force_created, function(event)
     OarcEnemiesForceCreated(event)
+end)
+
+script.on_event(defines.events.on_sector_scanned, function (event)
+    OarcEnemiesSectorScanned(event)
+end)
+
+script.on_event(defines.events.on_rocket_launched, function(event)
+    OarcEnemiesRocketLaunched(event)
 end)

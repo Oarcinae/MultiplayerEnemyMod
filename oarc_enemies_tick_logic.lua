@@ -104,22 +104,23 @@ end
 
 
 function ProcessAttackCleanupInvalidGroups(key, attack)
-    if (attack.process_stg ~= OE_PROCESS_STG_GROUP_ACTIVE) then return false end
+    if (attack.process_stg ~= OE_PROCESS_STG_GROUP_ACTIVE) and
+    	(attack.process_stg ~= OE_PROCESS_STG_BUILD_BASE) then return false end
 
     if (not attack.group or not attack.group.valid) then
         SendBroadcastMsg("ProcessAttackCleanupInvalidGroups - Group killed?")
-        global.oarc_enemies.attacks[key] = nil
+        table.remove(global.oarc_enemies.attacks, key)
+        return true
 
     elseif (attack.group.state == defines.group_state.wander_in_group) then
         SendBroadcastMsg("ProcessAttackCleanupInvalidGroups - Group done?")
         EnemyGroupBuildBaseThenWander(attack.group, attack.group.position)
-        -- global.oarc_enemies.attacks[key] = nil
         global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_BUILD_BASE
+        return true
     end
 
     return false
 end
-
 
 function ProcessPlayerTimersEverySecond()
     for name,timer in pairs(global.oarc_enemies.player_timers) do
@@ -127,10 +128,20 @@ function ProcessPlayerTimersEverySecond()
             if (timer > 0) then
                 global.oarc_enemies.player_timers[name] = timer-1
             else
-                OarcEnemiesPlayerAttack(name)
-                global.oarc_enemies.player_timers[name] =
-                    (math.max(OE_MAX_TIME_BETWEEN_ATTACKS_MINS/game.players[name].online_time,
-                                OE_MIN_TIME_BETWEEN_ATTACKS_MINS) + math.random(0,2)) * 60
+            	if (math.random(1,3) == 1) then
+                	OarcEnemiesPlayerAttackCharacter(name)
+                else
+                	OarcEnemiesBuildingAttack(name, {"ammo-turret",
+		                                                "electric-turret",
+		                                                "fluid-turret",
+		                                                "artillery-turret",
+			                                            "mining-drill",
+														"furnace",
+														"reactor",
+														"assembling-machine",
+														"generator"})
+                end
+                global.oarc_enemies.player_timers[name] = GetRandomizedPlayerTimer(game.players[name].online_time/TICKS_PER_SECOND)
             end
         end
     end
@@ -143,7 +154,7 @@ function ProcessAttackFindTarget(key, attack)
 
     if (attack.attempts == 0) then
         SendBroadcastMsg("attack.attempts = 0 - ATTACK FAILURE")
-        global.oarc_enemies.attacks[key] = nil
+        table.remove(global.oarc_enemies.attacks, key)
         return false
     end
 
@@ -163,7 +174,7 @@ function ProcessAttackFindTarget(key, attack)
                 local e,s = GetEnemyGroup{player=player,
                                             force_name=player.force.name,
                                             surface=game.surfaces[1],
-                                            target_position=random_building.position}
+                                            target_pos=random_building.position}
 
                 global.oarc_enemies.attacks[key].size = s
                 global.oarc_enemies.attacks[key].evo = e
@@ -171,7 +182,7 @@ function ProcessAttackFindTarget(key, attack)
                 return true
             else
                 SendBroadcastMsg("No building found to attack.")
-                global.oarc_enemies.attacks[key] = nil
+                table.remove(global.oarc_enemies.attacks, key)
             end
 
         -- Attack a player directly
@@ -182,7 +193,7 @@ function ProcessAttackFindTarget(key, attack)
             local e,s = GetEnemyGroup{player=player,
                                             force_name=player.force.name,
                                             surface=game.surfaces[1],
-                                            target_position=player.character.position}
+                                            target_pos=player.character.position}
 
             global.oarc_enemies.attacks[key].size = s
             global.oarc_enemies.attacks[key].evo = e
@@ -204,7 +215,7 @@ function ProcessAttackFindSpawn(key, attack)
 
     if (attack.attempts == 0) then
         SendBroadcastMsg("attack.attempts = 0 - ProcessAttackFindSpawn FAILURE")
-        global.oarc_enemies.attacks[key] = nil
+        table.remove(global.oarc_enemies.attacks, key)
         return false
     end
 
@@ -226,7 +237,7 @@ function ProcessAttackFindSpawn(key, attack)
         elseif (attack.target_chunk) then
             c_pos = attack.target_chunk
         end
-        local spawns = SpiralSearch(c_pos, OE_ATTACK_SEARCH_RADIUS_CHUNKS, 1, OarcEnemiesIsChunkValidSpawn)
+        local spawns = SpiralSearch(c_pos, OE_ATTACK_SEARCH_RADIUS_CHUNKS, 5, OarcEnemiesIsChunkValidSpawn)
 
         if (spawns ~= nil) then
             global.oarc_enemies.attacks[key].spawn_chunk = spawns[GetRandomKeyFromTable(spawns)]
@@ -253,7 +264,7 @@ function ProcessAttackCheckPathFromSpawn(key, attack)
 
     if (attack.attempts == 0) then
         SendBroadcastMsg("attack.attempts = 0 - ProcessAttackCheckPathFromSpawn FAILURE")
-        global.oarc_enemies.attacks[key] = nil
+        table.remove(global.oarc_enemies.attacks, key)
         return false
     end
 
@@ -262,7 +273,7 @@ function ProcessAttackCheckPathFromSpawn(key, attack)
         -- Check group doesn't already exist
         if (attack.group and attack.group_id and attack.group.valid) then
             SendBroadcastMsg("ERROR - group should not be valid - ProcessAttackCheckPathFromSpawn!")
-            global.oarc_enemies.attacks[key] = nil
+            table.remove(global.oarc_enemies.attacks, key)
             return false
         end
 
@@ -272,6 +283,11 @@ function ProcessAttackCheckPathFromSpawn(key, attack)
                                                                 1)
         global.oarc_enemies.attacks[key].spawn_pos = spawn_pos
 
+        if (not spawn_pos) then
+        	SendBroadcastMsg("No space to spawn? ProcessAttackCheckPathFromSpawn")
+        	global.oarc_enemies.attacks[key].attempts = attack.attempts - 1
+        	return false
+        end
 
         local target_pos = nil
         if (attack.target_entity and attack.target_entity.valid) then
@@ -332,7 +348,6 @@ function ProcessAttackCheckPathComplete(event)
             if (attack.process_stg == OE_PROCESS_STG_SPAWN_PATH_CALC) then
                 if (group_exists_already) then
                     SendBroadcastMsg("ERROR - OE_PROCESS_STG_SPAWN_PATH_CALC has a valid group?!")
-                    -- attack.group.set_autonomous()
                 end
 
                 if (path_success) then
@@ -356,7 +371,6 @@ function ProcessAttackCheckPathComplete(event)
                     global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_CMD_GROUP
                 else
                     SendBroadcastMsg("Group can no longer path to target. Performing fallback attack instead" .. attack.group.group_id)
-                    -- attack.group.set_autonomous()
                     global.oarc_enemies.attacks[key].path_id = nil
                     global.oarc_enemies.attacks[key].attempts = attack.attempts - 1
                     global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_FALLBACK_ATTACK
@@ -377,7 +391,7 @@ function ProcessAttackCreateGroup(key, attack)
 
     if (attack.attempts == 0) then
         SendBroadcastMsg("attack.attempts = 0 - ProcessAttackCreateGroup FAILURE")
-        global.oarc_enemies.attacks[key] = nil
+        table.remove(global.oarc_enemies.attacks, key)
         return false
     end
 
@@ -409,7 +423,7 @@ function ProcessAttackCommandGroup(key, attack)
 
     if (attack.attempts == 0) then
         SendBroadcastMsg("attack.attempts = 0 - ProcessAttackCommandGroup FAILURE")
-        global.oarc_enemies.attacks[key] = nil
+        table.remove(global.oarc_enemies.attacks, key)
         return false
     end
 
@@ -476,7 +490,7 @@ function ProcessAttackCommandFailed(key, attack)
 
     if (attack.attempts == 0) then
         SendBroadcastMsg("attack.attempts = 0 - ProcessAttackCommandFailed FAILURE")
-        global.oarc_enemies.attacks[key] = nil
+        table.remove(global.oarc_enemies.attacks, key)
         return false
     end
 
@@ -528,7 +542,7 @@ function ProcessAttackFallbackAuto(key, attack)
         SendBroadcastMsg("ProcessAttackFallbackAuto - Group no longer valid!")
     end
 
-    global.oarc_enemies.attacks[key] = nil
+    table.remove(global.oarc_enemies.attacks, key)
     return true
 end
 
@@ -547,7 +561,7 @@ function ProcessAttackRetryPath(key, attack)
             global.oarc_enemies.groups[attack.group.group_number] = nil
             attack.group.set_autonomous()
         end
-        global.oarc_enemies.attacks[key] = nil
+        table.remove(global.oarc_enemies.attacks, key)
         return false
     end
 
@@ -570,7 +584,7 @@ function ProcessAttackRetryPath(key, attack)
 
     else
         SendBroadcastMsg("ERROR - group should BE valid - ProcessAttackRetryPath!")
-        global.oarc_enemies.attacks[key] = nil
+        table.remove(global.oarc_enemies.attacks, key)
         return false
     end
 

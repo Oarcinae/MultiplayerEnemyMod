@@ -36,7 +36,7 @@ local function getValues(map, evo)
     for k,v in pairs(map) do
         local list = v[2];
         local low = list[1];
-        local high = list[#list-1];
+        local high = list[#list];
 
         for k2,v2 in pairs(list) do
             if ((v2[1] <= evo) and (v2[1] >  low[1])) then
@@ -180,6 +180,7 @@ function GetEnemyGroup(args)
         size = size + s
     end
 
+    SendBroadcastMsg("First size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
 
     -- Size/Evo from pollution
     if (args.surface and args.target_pos) then
@@ -190,15 +191,9 @@ function GetEnemyGroup(args)
         size = size + s
     end
 
-    SendBroadcastMsg("Generated: size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
+    SendBroadcastMsg("Second size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
 
-    -- Randomize a bit (upwards only)
-    evo = evo + math.random()*oe_params.rand_evo_amnt
-    size = size + math.random()*oe_params.rand_size_amnt
-
-    SendBroadcastMsg("Randomized: size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
-
-    -- Optional Clamps
+    -- Optional Clamps (before randomization)
     if (args.min_evo) then
         if (evo < args.min_evo) then evo = args.min_evo end
     end
@@ -212,6 +207,10 @@ function GetEnemyGroup(args)
         if (size < args.max_size) then size = args.max_size end
     end
 
+    -- Randomize a bit (upwards only)
+    evo = evo + math.random()*math.random()*oe_params.rand_evo_amnt
+    size = size + math.random()*math.random()*oe_params.rand_size_amnt
+
     -- Safety Clamps
     if (evo > 1) then evo = 1 end
     if (evo < 0) then evo = 0 end
@@ -224,4 +223,20 @@ function GetEnemyGroup(args)
     SendBroadcastMsg("Final: size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
 
     return evo,size
+end
+
+-- Given online time in seconds
+-- Returns a new timer in seconds
+function GetRandomizedPlayerTimer(play_time_seconds)
+    -- More time played = Faster attacks
+    local time_factor = play_time_seconds / (oe_params.player_time_peak_hours*3600)
+    local adjusted_minimum = (oe_params.seconds_between_attacks_max)
+                            -(oe_params.seconds_between_attacks_max*time_factor)
+                            +oe_params.seconds_between_attacks_min
+    -- Add some +/- random seconds as well.
+    local final_seconds = adjusted_minimum + (math.random()*math.random(-oe_params.seconds_between_attacks_rand,oe_params.seconds_between_attacks_rand))
+
+    -- Validate absolute minimum of 1 second.
+    if (final_seconds <= 1 ) then return 1 end
+    return math.floor(final_seconds)
 end
