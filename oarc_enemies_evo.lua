@@ -235,7 +235,10 @@ function GetRandomizedPlayerTimer(play_time_seconds)
     -- Add some +/- random seconds as well.
     local final_seconds = adjusted_minimum + (math.random()*math.random(-oe_params.seconds_between_attacks_rand,oe_params.seconds_between_attacks_rand))
 
+    log("Player timer: " .. final_seconds)
+
     -- Validate absolute minimum of 1 second.
     if (final_seconds <= 1 ) then return 1 end
+
     return math.floor(final_seconds)
 end

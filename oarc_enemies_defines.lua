@@ -60,7 +60,7 @@ oe_params = {
     rand_evo_amnt = 0.15, -- Up to + this amount
     rand_size_amnt = 10, -- Up to + this amount
 
-    seconds_between_attacks_min = 5*6,
-    seconds_between_attacks_max = 30*6,
-    seconds_between_attacks_rand = 4*6
+    seconds_between_attacks_min = 5,
+    seconds_between_attacks_max = 9999,
+    seconds_between_attacks_rand = 4
 }

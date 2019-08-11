@@ -170,6 +170,7 @@ script.on_event(defines.events.on_chunk_generated, function(event)
 end)
 
 script.on_event({defines.events.on_robot_built_entity,defines.events.on_built_entity}, function (event)
+    log("on_built_entity")
     local e = event.created_entity
     if ((e.type ~= "car") and
         (e.type ~= "logistic-robot") and
@@ -181,10 +182,12 @@ script.on_event({defines.events.on_robot_built_entity,defines.events.on_built_en
 end)
 
 script.on_event(defines.events.script_raised_built, function(event)
+    log("script_raised_built")
     OarcEnemiesChunkHasPlayerBuilding(event.entity.position)
 end)
 
 script.on_event(defines.events.on_biter_base_built, function(event)
+    log("on_biter_base_built " .. game.tick)
     OarcEnemiesBiterBaseBuilt(event)
 end)
 
@@ -195,17 +198,17 @@ script.on_event(defines.events.on_entity_spawned, function(event)
 end)
 
 script.on_event(defines.events.on_entity_died, function(event)
-    -- log("on_entity_died")
+    log("on_entity_died")
     OarcEnemiesEntityDiedEvent(event)
 end)
 
 script.on_event(defines.events.on_unit_group_created, function(event)
-    -- log("on_unit_group_created")
+    log("on_unit_group_created")
     OarcEnemiesGroupCreatedEvent(event)
 end)
 
 script.on_event(defines.events.on_unit_removed_from_group, function(event)
-    -- log("on_unit_removed_from_group")
+    log("on_unit_removed_from_group")
     OarcEnemiesUnitRemoveFromGroupEvent(event)
 end)
 
@@ -228,7 +231,7 @@ script.on_event(defines.events.on_tick, function(event)
 end)
 
 script.on_event(defines.events.on_script_path_request_finished, function(event)
-    -- log("on_script_path_request_finished")
+    log("on_script_path_request_finished " .. game.tick)
     ProcessAttackCheckPathComplete(event)
 end)
 

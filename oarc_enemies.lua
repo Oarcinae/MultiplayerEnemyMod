@@ -263,12 +263,16 @@ function OarcEnemiesChunkGenerated(event)
 
     -- Check if it has spawners
     local spawners = event.surface.find_entities_filtered{area=event.area,
-                                                                type={"unit-spawner", "turret"},
+                                                                type={"unit-spawner"},
                                                                 force="enemy"}
 
     -- If this is the first chunk in that row:
     if (global.oarc_enemies.chunk_map[c_pos.x] == nil) then
         global.oarc_enemies.chunk_map[c_pos.x] = {}
+    end
+
+    if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] ~= nil) then
+        log("WARNING?!? UNEXPECTED - OarcEnemiesChunkGenerated - x.y exists?")
     end
 
     -- Save chunk info.
@@ -401,9 +405,11 @@ function OarcEnemiesBiterBaseBuilt(event)
     end
 
     if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners == nil) then
-        global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners = {event.entity}
+        log("New spawner (first)?")
+        -- global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners = {event.entity}
     else
-        table.insert(global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners, {event.entity})
+        log("New spawner (insert)?")
+        -- table.insert(global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners, event.entity)
     end
 end
 
@@ -738,18 +744,6 @@ function EnemyGroupBuildBaseThenWander(group, target_pos)
                                         destination = target_pos,
                                         ignore_planner = true,
                                         distraction = defines.distraction.by_enemy})
-    -- If the first attempt fails, try a nearby random location.
-    table.insert(combined_commands, {type = defines.command.build_base,
-                                        ignore_planner = true,
-                                        destination = {x=target_pos.x+32,
-                                                        y=target_pos.y+32},
-                                        distraction = defines.distraction.by_enemy})
-    -- If the second attempt fails, try a nearby random location.
-    table.insert(combined_commands, {type = defines.command.build_base,
-                                        ignore_planner = true,
-                                        destination = {x=target_pos.x-32,
-                                                        y=target_pos.y-32},
-                                        distraction = defines.distraction.by_enemy})
     -- Last resort is wander and attack anything in the area
     table.insert(combined_commands, {type = defines.command.wander,
                                         distraction = defines.distraction.by_anything})
@@ -779,18 +773,6 @@ function EnemyUnitBuildBaseThenWander(unit, target_pos)
     table.insert(combined_commands, {type = defines.command.build_base,
                                         destination = target_pos,
                                         ignore_planner = true,
-                                        distraction = defines.distraction.by_enemy})
-    -- If the first attempt fails, try a nearby random location.
-    table.insert(combined_commands, {type = defines.command.build_base,
-                                        ignore_planner = true,
-                                        destination = {x=target_pos.x+32,
-                                                        y=target_pos.y+32},
-                                        distraction = defines.distraction.by_enemy})
-    -- If the second attempt fails, try a nearby random location.
-    table.insert(combined_commands, {type = defines.command.build_base,
-                                        ignore_planner = true,
-                                        destination = {x=target_pos.x-32,
-                                                        y=target_pos.y-32},
                                         distraction = defines.distraction.by_enemy})
     -- Last resort is wander and attack anything in the area
     table.insert(combined_commands, {type = defines.command.wander,

@@ -9,7 +9,6 @@ function OarcEnemiesOnTick()
 
     -- Cleanup attacks that have died or somehow become invalid.
     if ((game.tick % (TICKS_PER_SECOND)) == 20) then
-        log("tick_log ProcessAttackCleanupInvalidGroups " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCleanupInvalidGroups(key, attack) then break end
         end
@@ -17,14 +16,12 @@ function OarcEnemiesOnTick()
 
     -- Process player timers
     if ((game.tick % (TICKS_PER_SECOND)) == 21) then
-        log("tick_log ProcessPlayerTimersEverySecond " .. game.tick)
         ProcessPlayerTimersEverySecond()
     end
 
     -- OE_PROCESS_STG_FIND_TARGET
     -- Find target given request type
     if ((game.tick % (TICKS_PER_SECOND)) == 22) then
-        log("tick_log ProcessAttackFindTarget " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackFindTarget(key, attack) then break end
         end
@@ -33,7 +30,6 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_FIND_SPAWN
     -- Find spawn location
     if ((game.tick % (TICKS_PER_SECOND)) == 23) then
-        log("tick_log ProcessAttackFindSpawn " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackFindSpawn(key, attack) then break end
         end
@@ -42,7 +38,6 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_SPAWN_PATH_REQ
     -- Find path
     if ((game.tick % (TICKS_PER_SECOND)) == 24) then
-        log("tick_log ProcessAttackCheckPathFromSpawn " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCheckPathFromSpawn(key, attack) then break end
         end
@@ -54,7 +49,6 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_CREATE_GROUP
     -- Spawn group
     if ((game.tick % (TICKS_PER_SECOND)) == 25) then
-        log("tick_log ProcessAttackCreateGroup " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCreateGroup(key, attack) then break end
         end
@@ -63,7 +57,6 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_CMD_GROUP
     -- Send group on attack
     if ((game.tick % (TICKS_PER_SECOND)) == 26) then
-        log("tick_log ProcessAttackCommandGroup " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCommandGroup(key, attack) then break end
         end
@@ -75,7 +68,6 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_CMD_FAILED
     -- Handle failed groups?
     if ((game.tick % (TICKS_PER_SECOND)) == 27) then
-        log("tick_log ProcessAttackCommandFailed " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCommandFailed(key, attack) then break end
         end
@@ -84,7 +76,6 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_FALLBACK_ATTACK
     -- Attempt fallback attack on general area of target
     if ((game.tick % (TICKS_PER_SECOND)) == 28) then
-        log("tick_log ProcessAttackFallbackAttack " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackFallbackAttack(key, attack) then break end
         end
@@ -93,7 +84,6 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_FALLBACK_FINAL
     -- Final fallback just abandons attack and sets the group to autonomous
     if ((game.tick % (TICKS_PER_SECOND)) == 29) then
-        log("tick_log ProcessAttackFallbackAuto " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackFallbackAuto(key, attack) then break end
         end
@@ -102,7 +92,6 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_RETRY_PATH_REQ
     -- Handle pathing retries
     if ((game.tick % (TICKS_PER_SECOND)) == 30) then
-        log("tick_log ProcessAttackRetryPath " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackRetryPath(key, attack) then break end
         end
@@ -136,9 +125,13 @@ end
 function ProcessPlayerTimersEverySecond()
     for name,timer in pairs(global.oarc_enemies.player_timers) do
         if (game.players[name] and game.players[name].connected) then
+
             if (timer > 0) then
                 global.oarc_enemies.player_timers[name] = timer-1
             else
+
+                log("tick_log ProcessPlayerTimersEverySecond " .. game.tick)
+
             	if (math.random(1,3) == 1) then
                 	OarcEnemiesPlayerAttackCharacter(name)
                 else
@@ -153,6 +146,8 @@ function ProcessPlayerTimersEverySecond()
 														"generator"})
                 end
                 global.oarc_enemies.player_timers[name] = GetRandomizedPlayerTimer(game.players[name].online_time/TICKS_PER_SECOND)
+
+                log("timer " .. global.oarc_enemies.player_timers[name])
             end
         end
     end
@@ -162,6 +157,8 @@ end
 function ProcessAttackFindTarget(key, attack)
 
     if (attack.process_stg ~= OE_PROCESS_STG_FIND_TARGET) then return false end
+
+    log("tick_log ProcessAttackFindTarget " .. game.tick)
 
     if (attack.attempts == 0) then
         log("attack.attempts = 0 - ATTACK FAILURE")
@@ -179,7 +176,9 @@ function ProcessAttackFindTarget(key, attack)
 
             local random_building = GetRandomBuildingAny(attack.target_player,
                                                             attack.building_types)
+
             if (random_building ~= nil) then
+                log("ProcessAttackFindTarget - target: " + serpent.block(random_building.position))
                 global.oarc_enemies.attacks[key].target_entity = random_building
 
                 local e,s = GetEnemyGroup{player=player,
@@ -223,6 +222,8 @@ end
 function ProcessAttackFindSpawn(key, attack)
 
     if (attack.process_stg ~= OE_PROCESS_STG_FIND_SPAWN) then return false end
+
+    log("tick_log ProcessAttackFindSpawn " .. game.tick)
 
     if (attack.attempts == 0) then
         log("attack.attempts = 0 - ProcessAttackFindSpawn FAILURE")
@@ -272,6 +273,8 @@ end
 function ProcessAttackCheckPathFromSpawn(key, attack)
 
     if (attack.process_stg ~= OE_PROCESS_STG_SPAWN_PATH_REQ) then return false end
+
+    log("tick_log ProcessAttackCheckPathFromSpawn " .. game.tick)
 
     if (attack.attempts == 0) then
         log("attack.attempts = 0 - ProcessAttackCheckPathFromSpawn FAILURE")
@@ -400,6 +403,8 @@ end
 function ProcessAttackCreateGroup(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_CREATE_GROUP) then return false end
 
+    log("tick_log ProcessAttackCreateGroup " .. game.tick)
+
     if (attack.attempts == 0) then
         log("attack.attempts = 0 - ProcessAttackCreateGroup FAILURE")
         table.remove(global.oarc_enemies.attacks, key)
@@ -431,6 +436,8 @@ end
 
 function ProcessAttackCommandGroup(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_CMD_GROUP) then return false end
+
+    log("tick_log ProcessAttackCommandGroup " .. game.tick)
 
     if (attack.attempts == 0) then
         log("attack.attempts = 0 - ProcessAttackCommandGroup FAILURE")
@@ -500,6 +507,8 @@ end
 function ProcessAttackCommandFailed(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_CMD_FAILED) then return false end
 
+    log("tick_log ProcessAttackCommandFailed " .. game.tick)
+
     if (attack.attempts == 0) then
         log("attack.attempts = 0 - ProcessAttackCommandFailed FAILURE")
         table.remove(global.oarc_enemies.attacks, key)
@@ -528,6 +537,8 @@ end
 function ProcessAttackFallbackAttack(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_FALLBACK_ATTACK) then return false end
 
+    log("tick_log ProcessAttackFallbackAttack " .. game.tick)
+
     if (attack.group_id and attack.group and attack.group.valid and attack.target_chunk) then
 
         EnemyGroupAttackAreaThenWander(attack.group,
@@ -547,6 +558,8 @@ end
 function ProcessAttackFallbackAuto(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_FALLBACK_FINAL) then return false end
 
+    log("tick_log ProcessAttackFallbackAuto " .. game.tick)
+
     if (attack.group and attack.group.valid) then
         log("ProcessAttackFallbackAuto - Group now autonomous...")
         attack.group.set_autonomous()
@@ -562,6 +575,8 @@ end
 function ProcessAttackRetryPath(key, attack)
 
     if (attack.process_stg ~= OE_PROCESS_STG_RETRY_PATH_REQ) then return false end
+
+    log("tick_log ProcessAttackRetryPath " .. game.tick)
 
     -- Validation checks
     if ((attack.target_type ~= OE_TARGET_TYPE_PLAYER) or
@@ -580,17 +595,22 @@ function ProcessAttackRetryPath(key, attack)
     if (attack.group and attack.group_id and attack.group.valid) then
 
         -- Path request
-        global.oarc_enemies.attacks[key].path_id =
-            game.surfaces[1].request_path{bounding_box={{0,0},{0,0}},
-                                            collision_mask={"player-layer"},
-                                            start=attack.group.members[1].position,
-                                            goal=attack.target_entity.position,
-                                            force=game.forces["enemy"],
-                                            radius=8,
-                                            pathfind_flags={low_priority=true},
-                                            can_open_gates=false,
-                                            path_resolution_modifier=-1}
-        global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_RETRY_PATH_CALC
+        log("ProcessAttackRetryPath - DESTROYED")
+        attack.group.destroy()
+        table.remove(global.oarc_enemies.attacks, key)
+
+        -- global.oarc_enemies.attacks[key].path_id =
+        --     game.surfaces[1].request_path{bounding_box={{0,0},{0,0}},
+        --                                     collision_mask={"player-layer"},
+        --                                     start=attack.group.members[1].position,
+        --                                     goal=attack.target_entity.position,
+        --                                     force=game.forces["enemy"],
+        --                                     radius=8,
+        --                                     pathfind_flags={low_priority=true},
+        --                                     can_open_gates=false,
+        --                                     path_resolution_modifier=-1}
+        -- global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_RETRY_PATH_CALC
+
         return true
 
     else

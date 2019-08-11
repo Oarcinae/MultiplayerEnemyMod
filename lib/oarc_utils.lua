@@ -57,7 +57,7 @@ function TimeoutSpeechBubblesOnTick()
                     if (sp.entity ~= nil) and (sp.entity.valid) then
                         sp.entity.start_fading_out()
                     end
-                    global.oarc_speech_bubbles[k] = nil
+                    table.remove(global.oarc_speech_bubbles, k)
                 end
             end
         end
