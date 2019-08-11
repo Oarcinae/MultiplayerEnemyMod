@@ -184,36 +184,39 @@ script.on_event(defines.events.script_raised_built, function(event)
     OarcEnemiesChunkHasPlayerBuilding(event.entity.position)
 end)
 
+script.on_event(defines.events.on_biter_base_built, function(event)
+    OarcEnemiesBiterBaseBuilt(event)
+end)
 
 script.on_event(defines.events.on_entity_spawned, function(event)
     -- Stop enemies from being created normally:
     event.entity.destroy()
-    log("on_entity_spawned")
+    -- log("on_entity_spawned")
 end)
 
 script.on_event(defines.events.on_entity_died, function(event)
-    log("on_entity_died")
+    -- log("on_entity_died")
     OarcEnemiesEntityDiedEvent(event)
 end)
 
 script.on_event(defines.events.on_unit_group_created, function(event)
-    log("on_unit_group_created")
+    -- log("on_unit_group_created")
     OarcEnemiesGroupCreatedEvent(event)
 end)
 
 script.on_event(defines.events.on_unit_removed_from_group, function(event)
-    log("on_unit_removed_from_group")
+    -- log("on_unit_removed_from_group")
     OarcEnemiesUnitRemoveFromGroupEvent(event)
 end)
 
 -- script.on_event(defines.events.on_unit_added_to_group, function(event)
     -- Maybe use this to track all units I've created so I can clean up later if needed?
-    -- SendBroadcastMsg("Unit added to group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
+    -- log("Unit added to group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
 -- end)
 
 script.on_event(defines.events.on_ai_command_completed, function(event)
-    log("on_ai_command_completed")
-    SendBroadcastMsg("AI cmd completed? " .. event.unit_number .. " : " .. event.result)
+    -- log("on_ai_command_completed")
+    log("AI cmd completed? " .. event.unit_number .. " : " .. event.result .. " " .. game.tick)
     if (event.result == defines.behavior_result.fail) then
         OarcEnemiesGroupCmdFailed(event)
     end
@@ -225,7 +228,7 @@ script.on_event(defines.events.on_tick, function(event)
 end)
 
 script.on_event(defines.events.on_script_path_request_finished, function(event)
-    log("on_script_path_request_finished")
+    -- log("on_script_path_request_finished")
     ProcessAttackCheckPathComplete(event)
 end)
 

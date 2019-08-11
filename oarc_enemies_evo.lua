@@ -85,7 +85,6 @@ end
 function GetEnemyFromChanceList(chance_list)
 
     if ((chance_list == nil) or (#chance_list == 0)) then
-        SendBroadcastMsg("ERROR - need a valid chance list!")
         log("ERROR - need a valid chance list!")
         return "small-biter"
     end
@@ -180,7 +179,7 @@ function GetEnemyGroup(args)
         size = size + s
     end
 
-    SendBroadcastMsg("First size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
+    log("First size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
 
     -- Size/Evo from pollution
     if (args.surface and args.target_pos) then
@@ -191,7 +190,7 @@ function GetEnemyGroup(args)
         size = size + s
     end
 
-    SendBroadcastMsg("Second size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
+    log("Second size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
 
     -- Optional Clamps (before randomization)
     if (args.min_evo) then
@@ -220,7 +219,7 @@ function GetEnemyGroup(args)
     -- Size should be an int.
     size = math.ceil(size)
 
-    SendBroadcastMsg("Final: size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
+    log("Final: size=" .. string.format("%.3f", size) .. " evo=".. string.format("%.3f", evo))
 
     return evo,size
 end

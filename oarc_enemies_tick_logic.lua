@@ -9,6 +9,7 @@ function OarcEnemiesOnTick()
 
     -- Cleanup attacks that have died or somehow become invalid.
     if ((game.tick % (TICKS_PER_SECOND)) == 20) then
+        log("tick_log ProcessAttackCleanupInvalidGroups " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCleanupInvalidGroups(key, attack) then break end
         end
@@ -16,12 +17,14 @@ function OarcEnemiesOnTick()
 
     -- Process player timers
     if ((game.tick % (TICKS_PER_SECOND)) == 21) then
+        log("tick_log ProcessPlayerTimersEverySecond " .. game.tick)
         ProcessPlayerTimersEverySecond()
     end
 
     -- OE_PROCESS_STG_FIND_TARGET
     -- Find target given request type
     if ((game.tick % (TICKS_PER_SECOND)) == 22) then
+        log("tick_log ProcessAttackFindTarget " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackFindTarget(key, attack) then break end
         end
@@ -30,6 +33,7 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_FIND_SPAWN
     -- Find spawn location
     if ((game.tick % (TICKS_PER_SECOND)) == 23) then
+        log("tick_log ProcessAttackFindSpawn " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackFindSpawn(key, attack) then break end
         end
@@ -38,6 +42,7 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_SPAWN_PATH_REQ
     -- Find path
     if ((game.tick % (TICKS_PER_SECOND)) == 24) then
+        log("tick_log ProcessAttackCheckPathFromSpawn " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCheckPathFromSpawn(key, attack) then break end
         end
@@ -49,6 +54,7 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_CREATE_GROUP
     -- Spawn group
     if ((game.tick % (TICKS_PER_SECOND)) == 25) then
+        log("tick_log ProcessAttackCreateGroup " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCreateGroup(key, attack) then break end
         end
@@ -57,6 +63,7 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_CMD_GROUP
     -- Send group on attack
     if ((game.tick % (TICKS_PER_SECOND)) == 26) then
+        log("tick_log ProcessAttackCommandGroup " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCommandGroup(key, attack) then break end
         end
@@ -68,6 +75,7 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_CMD_FAILED
     -- Handle failed groups?
     if ((game.tick % (TICKS_PER_SECOND)) == 27) then
+        log("tick_log ProcessAttackCommandFailed " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackCommandFailed(key, attack) then break end
         end
@@ -76,6 +84,7 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_FALLBACK_ATTACK
     -- Attempt fallback attack on general area of target
     if ((game.tick % (TICKS_PER_SECOND)) == 28) then
+        log("tick_log ProcessAttackFallbackAttack " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackFallbackAttack(key, attack) then break end
         end
@@ -84,6 +93,7 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_FALLBACK_FINAL
     -- Final fallback just abandons attack and sets the group to autonomous
     if ((game.tick % (TICKS_PER_SECOND)) == 29) then
+        log("tick_log ProcessAttackFallbackAuto " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackFallbackAuto(key, attack) then break end
         end
@@ -92,6 +102,7 @@ function OarcEnemiesOnTick()
     -- OE_PROCESS_STG_RETRY_PATH_REQ
     -- Handle pathing retries
     if ((game.tick % (TICKS_PER_SECOND)) == 30) then
+        log("tick_log ProcessAttackRetryPath " .. game.tick)
         for key,attack in pairs(global.oarc_enemies.attacks) do
             if ProcessAttackRetryPath(key, attack) then break end
         end
@@ -108,12 +119,12 @@ function ProcessAttackCleanupInvalidGroups(key, attack)
     	(attack.process_stg ~= OE_PROCESS_STG_BUILD_BASE) then return false end
 
     if (not attack.group or not attack.group.valid) then
-        SendBroadcastMsg("ProcessAttackCleanupInvalidGroups - Group killed?")
+        log("ProcessAttackCleanupInvalidGroups - Group killed?")
         table.remove(global.oarc_enemies.attacks, key)
         return true
 
     elseif (attack.group.state == defines.group_state.wander_in_group) then
-        SendBroadcastMsg("ProcessAttackCleanupInvalidGroups - Group done?")
+        log("ProcessAttackCleanupInvalidGroups - Group done?")
         EnemyGroupBuildBaseThenWander(attack.group, attack.group.position)
         global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_BUILD_BASE
         return true
@@ -153,7 +164,7 @@ function ProcessAttackFindTarget(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_FIND_TARGET) then return false end
 
     if (attack.attempts == 0) then
-        SendBroadcastMsg("attack.attempts = 0 - ATTACK FAILURE")
+        log("attack.attempts = 0 - ATTACK FAILURE")
         table.remove(global.oarc_enemies.attacks, key)
         return false
     end
@@ -181,7 +192,7 @@ function ProcessAttackFindTarget(key, attack)
                 global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_FIND_SPAWN
                 return true
             else
-                SendBroadcastMsg("No building found to attack.")
+                log("No building found to attack.")
                 table.remove(global.oarc_enemies.attacks, key)
             end
 
@@ -202,7 +213,7 @@ function ProcessAttackFindTarget(key, attack)
         end
 
     else
-        SendBroadcastMsg("Missing info in attack or no retry atempts remaining!" .. key)
+        log("Missing info in attack or no retry atempts remaining!" .. key)
     end
 
     return false
@@ -214,7 +225,7 @@ function ProcessAttackFindSpawn(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_FIND_SPAWN) then return false end
 
     if (attack.attempts == 0) then
-        SendBroadcastMsg("attack.attempts = 0 - ProcessAttackFindSpawn FAILURE")
+        log("attack.attempts = 0 - ProcessAttackFindSpawn FAILURE")
         table.remove(global.oarc_enemies.attacks, key)
         return false
     end
@@ -237,13 +248,13 @@ function ProcessAttackFindSpawn(key, attack)
         elseif (attack.target_chunk) then
             c_pos = attack.target_chunk
         end
-        local spawns = SpiralSearch(c_pos, OE_ATTACK_SEARCH_RADIUS_CHUNKS, 5, OarcEnemiesIsChunkValidSpawn)
+        local spawns = SpiralSearch(c_pos, OE_ATTACK_SEARCH_RADIUS_CHUNKS, 5, OarcEnemiesDoesChunkHaveSpawner)
 
         if (spawns ~= nil) then
             global.oarc_enemies.attacks[key].spawn_chunk = spawns[GetRandomKeyFromTable(spawns)]
             global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_SPAWN_PATH_REQ
         else
-            SendBroadcastMsg("Could not find a spawn near target...")
+            log("Could not find a spawn near target...")
             global.oarc_enemies.attacks[key].target_entity = nil
             global.oarc_enemies.attacks[key].attempts = attack.attempts - 1
             global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_FIND_TARGET
@@ -251,7 +262,7 @@ function ProcessAttackFindSpawn(key, attack)
 
         return true
     else
-        SendBroadcastMsg("Missing attack info: target_entity or target_chunk!" .. key)
+        log("Missing attack info: target_entity or target_chunk!" .. key)
     end
 
     return false
@@ -263,7 +274,7 @@ function ProcessAttackCheckPathFromSpawn(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_SPAWN_PATH_REQ) then return false end
 
     if (attack.attempts == 0) then
-        SendBroadcastMsg("attack.attempts = 0 - ProcessAttackCheckPathFromSpawn FAILURE")
+        log("attack.attempts = 0 - ProcessAttackCheckPathFromSpawn FAILURE")
         table.remove(global.oarc_enemies.attacks, key)
         return false
     end
@@ -272,7 +283,7 @@ function ProcessAttackCheckPathFromSpawn(key, attack)
 
         -- Check group doesn't already exist
         if (attack.group and attack.group_id and attack.group.valid) then
-            SendBroadcastMsg("ERROR - group should not be valid - ProcessAttackCheckPathFromSpawn!")
+            log("ERROR - group should not be valid - ProcessAttackCheckPathFromSpawn!")
             table.remove(global.oarc_enemies.attacks, key)
             return false
         end
@@ -284,7 +295,7 @@ function ProcessAttackCheckPathFromSpawn(key, attack)
         global.oarc_enemies.attacks[key].spawn_pos = spawn_pos
 
         if (not spawn_pos) then
-        	SendBroadcastMsg("No space to spawn? ProcessAttackCheckPathFromSpawn")
+        	log("No space to spawn? ProcessAttackCheckPathFromSpawn")
         	global.oarc_enemies.attacks[key].attempts = attack.attempts - 1
         	return false
         end
@@ -297,7 +308,7 @@ function ProcessAttackCheckPathFromSpawn(key, attack)
         end
 
         if (not target_pos) then
-            SendBroadcastMsg("Lost target during ProcessAttackCheckPathFromSpawn")
+            log("Lost target during ProcessAttackCheckPathFromSpawn")
             global.oarc_enemies.attacks[key].target_entity = nil
             global.oarc_enemies.attacks[key].target_chunk = nil
             global.oarc_enemies.attacks[key].attempts = attack.attempts - 1
@@ -317,7 +328,7 @@ function ProcessAttackCheckPathFromSpawn(key, attack)
         global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_SPAWN_PATH_CALC
         return true
     else
-        SendBroadcastMsg("Missing attack info: spawn_chunk or path_id!" .. key)
+        log("Missing attack info: spawn_chunk or path_id!" .. key)
     end
 
     return false
@@ -330,12 +341,12 @@ function ProcessAttackCheckPathComplete(event)
 
     -- Debug help info
     if (path_success) then
-        SendBroadcastMsg("on_script_path_request_finished: " .. #event.path)
-        RenderPath(event.path, TICKS_PER_MINUTE*5, game.connected_players)
+        log("on_script_path_request_finished: " .. #event.path)
+        RenderPath(event.path, TICKS_PER_MINUTE, game.connected_players)
     else
-        SendBroadcastMsg("on_script_path_request_finished: FAILED")
+        log("on_script_path_request_finished: FAILED")
         if (event.try_again_later) then
-            SendBroadcastMsg("on_script_path_request_finished: TRY AGAIN LATER?")
+            log("on_script_path_request_finished: TRY AGAIN LATER?")
         end
     end
 
@@ -347,7 +358,7 @@ function ProcessAttackCheckPathComplete(event)
             -- First time path check before a group is spawned
             if (attack.process_stg == OE_PROCESS_STG_SPAWN_PATH_CALC) then
                 if (group_exists_already) then
-                    SendBroadcastMsg("ERROR - OE_PROCESS_STG_SPAWN_PATH_CALC has a valid group?!")
+                    log("ERROR - OE_PROCESS_STG_SPAWN_PATH_CALC has a valid group?!")
                 end
 
                 if (path_success) then
@@ -363,21 +374,21 @@ function ProcessAttackCheckPathComplete(event)
             elseif  (attack.process_stg == OE_PROCESS_STG_RETRY_PATH_CALC) then
 
                 if (not group_exists_already) then
-                    SendBroadcastMsg("ERROR - OE_PROCESS_STG_RETRY_PATH_CALC has NO valid group?!")
+                    log("ERROR - OE_PROCESS_STG_RETRY_PATH_CALC has NO valid group?!")
                 end
 
                 if (path_success) then
                     global.oarc_enemies.attacks[key].path = event.path
                     global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_CMD_GROUP
                 else
-                    SendBroadcastMsg("Group can no longer path to target. Performing fallback attack instead" .. attack.group.group_id)
+                    log("Group can no longer path to target. Performing fallback attack instead" .. attack.group.group_id)
                     global.oarc_enemies.attacks[key].path_id = nil
                     global.oarc_enemies.attacks[key].attempts = attack.attempts - 1
                     global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_FALLBACK_ATTACK
                 end
 
             else
-                SendBroadcastMsg("Path calculated but process stage is wrong!??!")
+                log("Path calculated but process stage is wrong!??!")
             end
 
             return
@@ -390,7 +401,7 @@ function ProcessAttackCreateGroup(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_CREATE_GROUP) then return false end
 
     if (attack.attempts == 0) then
-        SendBroadcastMsg("attack.attempts = 0 - ProcessAttackCreateGroup FAILURE")
+        log("attack.attempts = 0 - ProcessAttackCreateGroup FAILURE")
         table.remove(global.oarc_enemies.attacks, key)
         return false
     end
@@ -411,7 +422,7 @@ function ProcessAttackCreateGroup(key, attack)
 
         return true
     else
-        SendBroadcastMsg("ERROR - ProcessAttackCreateGroup already has a group?" .. key)
+        log("ERROR - ProcessAttackCreateGroup already has a group?" .. key)
     end
 
     return false
@@ -422,7 +433,7 @@ function ProcessAttackCommandGroup(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_CMD_GROUP) then return false end
 
     if (attack.attempts == 0) then
-        SendBroadcastMsg("attack.attempts = 0 - ProcessAttackCommandGroup FAILURE")
+        log("attack.attempts = 0 - ProcessAttackCommandGroup FAILURE")
         table.remove(global.oarc_enemies.attacks, key)
         return false
     end
@@ -446,14 +457,14 @@ function ProcessAttackCommandGroup(key, attack)
 
         -- Otherwise, shit's fucked
         else
-            SendBroadcastMsg("ProcessAttackCommandGroup invalid target?" .. key)
+            log("ProcessAttackCommandGroup invalid target?" .. key)
             global.oarc_enemies.attacks[key].path_id = nil
             global.oarc_enemies.attacks[key].attempts = attack.attempts - 1
             global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_FIND_TARGET
             return false
         end
     else
-        SendBroadcastMsg("ProcessAttackCommandGroup invalid group or path?" .. key)
+        log("ProcessAttackCommandGroup invalid group or path?" .. key)
     end
 
     return false
@@ -470,7 +481,8 @@ function OarcEnemiesGroupCmdFailed(event)
 
     -- Is group no longer valid?
     if (not attack.group or not attack.group.valid) then
-        global.oarc_enemies.attacks[attack_key] = nil
+        log("OarcEnemiesGroupCmdFailed group not valid anymore")
+        table.remove(global.oarc_enemies.attacks, attack_key)
         return
     end
 
@@ -489,7 +501,7 @@ function ProcessAttackCommandFailed(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_CMD_FAILED) then return false end
 
     if (attack.attempts == 0) then
-        SendBroadcastMsg("attack.attempts = 0 - ProcessAttackCommandFailed FAILURE")
+        log("attack.attempts = 0 - ProcessAttackCommandFailed FAILURE")
         table.remove(global.oarc_enemies.attacks, key)
         return false
     end
@@ -503,7 +515,7 @@ function ProcessAttackCommandFailed(key, attack)
     -- Fallback for all other attack types is to attack the general area instead.
     -- Might add other special cases here later.
     else
-        SendBroadcastMsg("ProcessAttackCommandFailed - performing fallback now?")
+        log("ProcessAttackCommandFailed - performing fallback now?")
         global.oarc_enemies.attacks[key].attempts = attack.attempts - 1
         global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_FALLBACK_ATTACK
         return true
@@ -523,8 +535,9 @@ function ProcessAttackFallbackAttack(key, attack)
                                       CHUNK_SIZE*2)
         global.oarc_enemies.attacks[key].target_type = OE_TARGET_TYPE_AREA
         global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_GROUP_ACTIVE
+        return true
     else
-        SendBroadcastMsg("ProcessAttackFallbackAttack invalid group or target?" .. key)
+        log("ProcessAttackFallbackAttack invalid group or target?" .. key)
     end
 
     return false
@@ -535,11 +548,10 @@ function ProcessAttackFallbackAuto(key, attack)
     if (attack.process_stg ~= OE_PROCESS_STG_FALLBACK_FINAL) then return false end
 
     if (attack.group and attack.group.valid) then
-        SendBroadcastMsg("ProcessAttackFallbackAuto - Group now autonomous...")
-        global.oarc_enemies.groups[attack.group.group_number] = nil
+        log("ProcessAttackFallbackAuto - Group now autonomous...")
         attack.group.set_autonomous()
     else
-        SendBroadcastMsg("ProcessAttackFallbackAuto - Group no longer valid!")
+        log("ProcessAttackFallbackAuto - Group no longer valid!")
     end
 
     table.remove(global.oarc_enemies.attacks, key)
@@ -556,9 +568,8 @@ function ProcessAttackRetryPath(key, attack)
         (attack.attempts == 0) or
         (not attack.target_entity) or
         (not attack.target_entity.valid)) then
-        SendBroadcastMsg("ProcessAttackRetryPath FAILURE")
+        log("ProcessAttackRetryPath FAILURE")
         if (attack.group and attack.group.valid) then
-            global.oarc_enemies.groups[attack.group.group_number] = nil
             attack.group.set_autonomous()
         end
         table.remove(global.oarc_enemies.attacks, key)
@@ -583,7 +594,7 @@ function ProcessAttackRetryPath(key, attack)
         return true
 
     else
-        SendBroadcastMsg("ERROR - group should BE valid - ProcessAttackRetryPath!")
+        log("ERROR - group should BE valid - ProcessAttackRetryPath!")
         table.remove(global.oarc_enemies.attacks, key)
         return false
     end
