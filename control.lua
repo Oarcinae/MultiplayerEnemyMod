@@ -141,10 +141,6 @@ require("oarc_enemies")
 require("oarc_enemies_gui")
 require("oarc_enemies_tick_logic")
 
--- DEBUG prints for me
-global.oarcDebugEnabled = true
-
-
 script.on_init(function(event)
     InitOarcEnemies() -- Setup global tables and such
 end)
@@ -202,10 +198,10 @@ script.on_event(defines.events.on_entity_died, function(event)
     OarcEnemiesEntityDiedEvent(event)
 end)
 
-script.on_event(defines.events.on_unit_group_created, function(event)
-    log("on_unit_group_created")
-    OarcEnemiesGroupCreatedEvent(event)
-end)
+-- script.on_event(defines.events.on_unit_group_created, function(event)
+--     log("on_unit_group_created")
+--     OarcEnemiesGroupCreatedEvent(event)
+-- end)
 
 script.on_event(defines.events.on_unit_removed_from_group, function(event)
     log("on_unit_removed_from_group")

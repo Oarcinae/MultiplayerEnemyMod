@@ -406,10 +406,10 @@ function OarcEnemiesBiterBaseBuilt(event)
 
     if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners == nil) then
         log("New spawner (first)?")
-        -- global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners = {event.entity}
+        global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners = {event.entity}
     else
         log("New spawner (insert)?")
-        -- table.insert(global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners, event.entity)
+        table.insert(global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners, event.entity)
     end
 end
 
@@ -541,7 +541,6 @@ function GetRandomBuildingSingleType(player_name, entity_type, count)
         count_internal = count
     end
 
-
     if (count_internal == 0) then
         log("GetRandomBuildingSingleType - recursive limit hit")
         return nil
@@ -593,7 +592,7 @@ function CreateEnemyGroup(surface, position, units)
 
     -- Attempt to spawn all units nearby
     for k,biter_name in pairs(units) do
-        local unit_position = surface.find_non_colliding_position(biter_name, {position.x, position.y}, 32, 1)
+        local unit_position = surface.find_non_colliding_position(biter_name, {position.x+math.random(-5,5), position.y+math.random(-5,5)}, 32, 1)
         if (unit_position) then
             new_unit = surface.create_entity{name = biter_name, position = unit_position}
             new_enemy_group.add_member(new_unit)
@@ -607,17 +606,17 @@ function CreateEnemyGroup(surface, position, units)
 end
 
 
-function OarcEnemiesGroupCreatedEvent(event)
-    log("Unit group created: " .. event.group.group_number)
-    -- if (global.oarc_enemies.groups == nil) then
-    --     global.oarc_enemies.groups = {}
-    -- end
-    -- if (global.oarc_enemies.groups[event.group.group_number] == nil) then
-    --     global.oarc_enemies.groups[event.group.group_number] = event.group
-    -- else
-    --     log("A group with this ID was already created???" .. event.group.group_number)
-    -- end
-end
+-- function OarcEnemiesGroupCreatedEvent(event)
+--     log("Unit group created: " .. event.group.group_number)
+--     -- if (global.oarc_enemies.groups == nil) then
+--     --     global.oarc_enemies.groups = {}
+--     -- end
+--     -- if (global.oarc_enemies.groups[event.group.group_number] == nil) then
+--     --     global.oarc_enemies.groups[event.group.group_number] = event.group
+--     -- else
+--     --     log("A group with this ID was already created???" .. event.group.group_number)
+--     -- end
+-- end
 
 function OarcEnemiesUnitRemoveFromGroupEvent(event)
 
@@ -626,16 +625,22 @@ function OarcEnemiesUnitRemoveFromGroupEvent(event)
         event.group and
         event.group.valid) then
 
+
+
         if ((event.group.state == defines.group_state.moving) or
             (event.group.state == defines.group_state.pathfinding)) then
             event.group.add_member(event.unit)
+            log("Unit removed and re-added?")
             return
+        else
+            log("ERROR - Unit removed and group is valid, but not in an expected state?")
         end
     end
 
     -- Otherwise, ask the unit to build a base.
     log("Unit removed from group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
     EnemyUnitBuildBaseThenWander(event.unit, event.unit.position)
+    -- event.unit.destroy()
 end
 
 function FindAttackKeyFromGroupIdNumber(id)
@@ -696,9 +701,6 @@ function EnemyGroupGoAttackEntityThenWander(group, target, path)
                                             pathfind_flags={low_priority=true},
                                             radius = 5,
                                             distraction = defines.distraction.by_damage})
-        -- game.forces["player"].add_chart_tag(game.surfaces[1],
-        --                                     {position=path[i].position,
-        --                                     text="path"})
         i = i + 100
     end
 
@@ -736,14 +738,24 @@ function EnemyGroupBuildBaseThenWander(group, target_pos)
         return
     end
 
-
     local combined_commands = {}
 
-    -- Build a base
+    -- Build a base (a few attempts)
     table.insert(combined_commands, {type = defines.command.build_base,
                                         destination = target_pos,
                                         ignore_planner = true,
                                         distraction = defines.distraction.by_enemy})
+    table.insert(combined_commands, {type = defines.command.build_base,
+                                        destination = {x=target_pos.x+math.random(-64,64),
+                                                        y=target_pos.y+math.random(-64,64)},
+                                        ignore_planner = true,
+                                        distraction = defines.distraction.by_enemy})
+    table.insert(combined_commands, {type = defines.command.build_base,
+                                        destination = {x=target_pos.x+math.random(-64,64),
+                                                        y=target_pos.y+math.random(-64,64)},
+                                        ignore_planner = true,
+                                        distraction = defines.distraction.by_enemy})
+
     -- Last resort is wander and attack anything in the area
     table.insert(combined_commands, {type = defines.command.wander,
                                         distraction = defines.distraction.by_anything})
@@ -767,13 +779,28 @@ function EnemyUnitBuildBaseThenWander(unit, target_pos)
         return
     end
 
+    -- Temporary fix?
+    local temp_group = unit.surface.create_unit_group{position = unit.position}
+    temp_group.add_member(unit)
+
     local combined_commands = {}
 
-    -- Build a base
+    -- Build a base (a few attempts)
     table.insert(combined_commands, {type = defines.command.build_base,
                                         destination = target_pos,
                                         ignore_planner = true,
                                         distraction = defines.distraction.by_enemy})
+    table.insert(combined_commands, {type = defines.command.build_base,
+                                        destination = {x=target_pos.x+math.random(-64,64),
+                                                        y=target_pos.y+math.random(-64,64)},
+                                        ignore_planner = true,
+                                        distraction = defines.distraction.by_enemy})
+    table.insert(combined_commands, {type = defines.command.build_base,
+                                        destination = {x=target_pos.x+math.random(-64,64),
+                                                        y=target_pos.y+math.random(-64,64)},
+                                        ignore_planner = true,
+                                        distraction = defines.distraction.by_enemy})
+
     -- Last resort is wander and attack anything in the area
     table.insert(combined_commands, {type = defines.command.wander,
                                         distraction = defines.distraction.by_anything})
@@ -786,5 +813,6 @@ function EnemyUnitBuildBaseThenWander(unit, target_pos)
         commands = combined_commands
     }
 
-    unit.set_command(compound_command)
+    -- Temporary fix?
+    temp_group.set_command(compound_command)
 end

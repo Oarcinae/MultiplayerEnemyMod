@@ -595,22 +595,17 @@ function ProcessAttackRetryPath(key, attack)
     if (attack.group and attack.group_id and attack.group.valid) then
 
         -- Path request
-        log("ProcessAttackRetryPath - DESTROYED")
-        attack.group.destroy()
-        table.remove(global.oarc_enemies.attacks, key)
-
-        -- global.oarc_enemies.attacks[key].path_id =
-        --     game.surfaces[1].request_path{bounding_box={{0,0},{0,0}},
-        --                                     collision_mask={"player-layer"},
-        --                                     start=attack.group.members[1].position,
-        --                                     goal=attack.target_entity.position,
-        --                                     force=game.forces["enemy"],
-        --                                     radius=8,
-        --                                     pathfind_flags={low_priority=true},
-        --                                     can_open_gates=false,
-        --                                     path_resolution_modifier=-1}
-        -- global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_RETRY_PATH_CALC
-
+        global.oarc_enemies.attacks[key].path_id =
+            game.surfaces[1].request_path{bounding_box={{0,0},{0,0}},
+                                            collision_mask={"player-layer"},
+                                            start=attack.group.members[1].position,
+                                            goal=attack.target_entity.position,
+                                            force=game.forces["enemy"],
+                                            radius=8,
+                                            pathfind_flags={low_priority=true},
+                                            can_open_gates=false,
+                                            path_resolution_modifier=-1}
+        global.oarc_enemies.attacks[key].process_stg = OE_PROCESS_STG_RETRY_PATH_CALC
         return true
 
     else
