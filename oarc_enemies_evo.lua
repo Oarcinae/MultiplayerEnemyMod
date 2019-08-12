@@ -4,8 +4,6 @@
 
 -- Evo lerp stuff taken from here:
 -- https://hastebin.com/udakacavap.js and Factorio Wiki
-
--- values are in the form [evolution, weight]
 local biter_weight_table = {
     {"small-biter",    {{0.0, 0.3}, {0.6, 0.0}}},
     {"medium-biter",   {{0.2, 0.0}, {0.6, 0.3}, {0.7, 0.1}}},
@@ -104,14 +102,15 @@ end
 function GetPlayerTimeEvoSize(play_time_ticks)
     local evo = 0
     local size = 0
+    local p = global.oe_params
 
     local hrs = play_time_ticks/TICKS_PER_HOUR
-    local hrs_factor = math.min(hrs/oe_params.player_time_peak_hours, 1)
+    local hrs_factor = math.min(hrs/p.player_time_peak_hours, 1)
 
-    local evo = math.min(hrs_factor*oe_params.player_time_evo_factor,
-                            oe_params.player_time_evo_factor)
-    local size = math.min(hrs_factor*oe_params.player_time_size_factor,
-                            oe_params.player_time_size_factor)
+    local evo = math.min(hrs_factor*p.player_time_evo_factor,
+                            p.player_time_evo_factor)
+    local size = math.min(hrs_factor*p.player_time_size_factor,
+                            p.player_time_size_factor)
 
     return evo,size
 end
@@ -120,13 +119,14 @@ end
 function GetPollutionEvoSize(pollution_amount)
     local evo = 0
     local size = 0
+    local p = global.oe_params
 
-    local pol_factor = math.min(pollution_amount/oe_params.pollution_peak_amnt, 1)
+    local pol_factor = math.min(pollution_amount/p.pollution_peak_amnt, 1)
 
-    local evo = math.min(pol_factor*oe_params.pollution_evo_factor,
-                            oe_params.pollution_evo_factor)
-    local size = math.min(pol_factor*oe_params.pollution_size_factor,
-                            oe_params.pollution_size_factor)
+    local evo = math.min(pol_factor*p.pollution_evo_factor,
+                            p.pollution_evo_factor)
+    local size = math.min(pol_factor*p.pollution_size_factor,
+                            p.pollution_size_factor)
 
     return evo,size
 end
@@ -135,13 +135,14 @@ end
 function GetTechLevelEvoSize(tech_level)
     local evo = 0
     local size = 0
+    local p = global.oe_params
 
-    local tech_factor = math.min(tech_level/oe_params.tech_peak_count, 1)
+    local tech_factor = math.min(tech_level/p.tech_peak_count, 1)
 
-    local evo = math.min(tech_factor*oe_params.tech_evo_factor,
-                            oe_params.tech_evo_factor)
-    local size = math.min(tech_factor*oe_params.tech_size_factor,
-                            oe_params.tech_size_factor)
+    local evo = math.min(tech_factor*p.tech_evo_factor,
+                            p.tech_evo_factor)
+    local size = math.min(tech_factor*p.tech_size_factor,
+                            p.tech_size_factor)
 
     return evo,size
 end
@@ -156,11 +157,12 @@ function GetEnemyGroup(args)
 
     -- Temp holders
     local e,s = 0
+    local p = global.oe_params
 
     -- Given a player, use that for time played AND for player force.
     if (args.player and args.player.connected) then
         local ticks_online = args.player.online_time
-        local tech_levels = global.oarc_enemies.tech_levels[args.player.force.name]
+        local tech_levels = global.oe.tech_levels[args.player.force.name]
 
         e,s = GetPlayerTimeEvoSize(ticks_online)
         evo = evo + e
@@ -172,7 +174,7 @@ function GetEnemyGroup(args)
 
     -- Support only force given, no player (should be RARE)
     elseif (args.force_name) then
-        local tech_levels = global.oarc_enemies.tech_levels[args.force_name]
+        local tech_levels = global.oe.tech_levels[args.force_name]
 
         e,s = GetTechLevelEvoSize(tech_levels)
         evo = evo + e
@@ -207,14 +209,14 @@ function GetEnemyGroup(args)
     end
 
     -- Randomize a bit (upwards only)
-    evo = evo + math.random()*math.random()*oe_params.rand_evo_amnt
-    size = size + math.random()*math.random()*oe_params.rand_size_amnt
+    evo = evo + math.random()*math.random()*p.rand_evo_amnt
+    size = size + math.random()*math.random()*p.rand_size_amnt
 
     -- Safety Clamps
     if (evo > 1) then evo = 1 end
     if (evo < 0) then evo = 0 end
-    if (size > oe_params.attack_size_max) then size = oe_params.attack_size_max end
-    if (size < oe_params.attack_size_min) then size = oe_params.attack_size_min end
+    if (size > p.attack_size_max) then size = p.attack_size_max end
+    if (size < p.attack_size_min) then size = p.attack_size_min end
 
     -- Size should be an int.
     size = math.ceil(size)
@@ -224,21 +226,22 @@ function GetEnemyGroup(args)
     return evo,size
 end
 
--- Given online time in seconds
--- Returns a new timer in seconds
-function GetRandomizedPlayerTimer(play_time_seconds)
+-- Returns a new timer in seconds scaled to given play time.
+function GetRandomizedPlayerTimer(play_time_seconds, additional_offset)
+    local p = global.oe_params
+
     -- More time played = Faster attacks
-    local time_factor = play_time_seconds / (oe_params.player_time_peak_hours*3600)
-    local adjusted_minimum = (oe_params.seconds_between_attacks_max)
-                            -(oe_params.seconds_between_attacks_max*time_factor)
-                            +oe_params.seconds_between_attacks_min
+    local time_factor = play_time_seconds / (p.player_time_peak_hours*3600)
+    local adjusted_minimum = (p.seconds_between_attacks_max)
+                            -(p.seconds_between_attacks_max*time_factor)
+                            +p.seconds_between_attacks_min
     -- Add some +/- random seconds as well.
-    local final_seconds = adjusted_minimum + (math.random()*math.random(-oe_params.seconds_between_attacks_rand,oe_params.seconds_between_attacks_rand))
+    local final_seconds = adjusted_minimum + additional_offset +
+                (math.random()*math.random(-p.seconds_between_attacks_rand,
+                                            p.seconds_between_attacks_rand))
 
-    log("Player timer: " .. final_seconds)
-
-    -- Validate absolute minimum of 1 second.
-    if (final_seconds <= 1 ) then return 1 end
+    -- Validate absolute minimum of X seconds
+    if (final_seconds <= 15) then return 15 end
 
     return math.floor(final_seconds)
 end

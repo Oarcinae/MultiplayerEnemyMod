@@ -26,11 +26,12 @@ local function ExpandOarcEnemiesGui(player)
         frame.add{type="button", caption="Turret Attack", name="oe_attack_turret"}
 
         local oe_info="General Info:" .. "\n" ..
-                        -- "Units: " .. #global.oarc_enemies.units .. "\n" ..
-                        "Attacks: " .. #global.oarc_enemies.attacks .. "\n" ..
-                        -- "Labs: " .. #global.oarc_enemies.science_labs[player.name] .. "\n" ..
-                        "Tech levels: " .. global.oarc_enemies.tech_levels[player.force.name] .. "\n" ..
-                        "Timer: " .. global.oarc_enemies.player_timers[player.name]
+                        -- "Units: " .. #global.oe.units .. "\n" ..
+                        "Attacks: " .. #global.oe.attacks .. "\n" ..
+                        -- "Labs: " .. #global.oe.science_labs[player.name] .. "\n" ..
+                        "Tech levels: " .. global.oe.tech_levels[player.force.name] .. "\n" ..
+                        "Next Player Attack: " .. global.oe.player_timers[player.name].character .. "\n" ..
+                        "Next Building Attack: " .. global.oe.player_timers[player.name].generic
         AddLabel(frame, "oe_info", oe_info, my_longer_label_style)
     end
 end

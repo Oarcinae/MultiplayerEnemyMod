@@ -20,11 +20,14 @@
 --      path=path,                      -- Set by on_script_path_request_finished.
 --      group_id=group_id,              -- Set during request processing.
 --      group=lua_unit_group            -- The group created to handle the attack
+--      group_age=tick_spawned          -- The tick when the group was created
 -- }
 
 
 -- Adapted from:
 -- https://stackoverflow.com/questions/3706219/algorithm-for-iterating-over-an-outward-spiral-on-a-discrete-2d-grid-from-the-or
+-- Searches in a spiral outwards on a 2D grid map.
+-- Returns table of coordinates when the check_function passes.
 function SpiralSearch(starting_c_pos, max_radius, max_count, check_function)
 
     local dx = 1
@@ -40,11 +43,6 @@ function SpiralSearch(starting_c_pos, max_radius, max_count, check_function)
     for i=1,(math.pow(max_radius*2+1, 2)) do
 
         if (true == check_function({x=x, y=y})) then
-            -- game.forces["player"].add_chart_tag(game.surfaces[1],
-            --                                     {position={x=x*32 + 16, y=y*32 + 16},
-            --                                     text=x..","..y})
-            --                                     -- icon={type="item",name="rocket-silo"}})
-            log("SpiralSearch: " .. x .. "," .. y)
             table.insert(found, {x=x, y=y})
             if (#found >= max_count) then return found end
         end
@@ -82,19 +80,41 @@ function OarcEnemiesSectorScanned(event)
     if not player.connected then return end
 
     -- 1 in a X chance of triggering an attack on radars?
-    -- if (math.random(1,500) == 1) then
+    if (math.random(1,global.oe_params.radar_scan_attack_chance) == 1) then
         OarcEnemiesBuildingAttack(player.name, "radar")
-    -- end
+    end
 end
 
 function OarcEnemiesRocketLaunched(event)
+    if (not event.rocket_silo) then return end
+    local player = event.rocket_silo.last_user
+    if (not player) then
+        log("Error? No last user on the silo.")
+        return
+    end
 
+    local silo = event.rocket_silo
 
+    local e,s = GetEnemyGroup{player=player,
+                                force_name=player.force.name,
+                                surface=silo.surface,
+                                target_pos=silo.position}
+
+    local rocket_launch_attack = {target_player = player_name,
+                                    target_type = OE_TARGET_TYPE_ENTITY,
+                                    attempts=1,
+                                    process_stg=OE_PROCESS_STG_FIND_SPAWN,
+                                    building_types=nil,
+                                    evo=e,
+                                    size=s}
+
+    log("SILO ATTACK")
+    table.insert(global.oe.attacks, rocket_launch_attack)
 end
 
 function OarcEnemiesForceCreated(event)
     if (not event.force) then return end
-    global.oarc_enemies.tech_levels[event.force.name] = 0
+    global.oe.tech_levels[event.force.name] = 0
 end
 
 function CountForceTechCompleted(force)
@@ -114,26 +134,59 @@ function CountForceTechCompleted(force)
 end
 
 function InitOarcEnemies()
-    global.oarc_enemies = {}
+    global.oe = {}
 
     -- We store a map of chunks to help figure out good spawn locations
-    global.oarc_enemies.chunk_map = {}
+    global.oe.chunk_map = {}
 
     -- Keep track of groups so we know when we are done with them (abandoned)
-    global.oarc_enemies.groups = {}
-    -- global.oarc_enemies.units = {}
+    global.oe.groups = {}
+    -- global.oe.units = {}
 
     -- Keep track of a player's buildings
-    global.oarc_enemies.buildings = {}
+    global.oe.buildings = {}
 
     -- Keep track of force tech levels
-    global.oarc_enemies.tech_levels = {}
+    global.oe.tech_levels = {}
 
     -- Each player has a timer for semi-regular attacks.
-    global.oarc_enemies.player_timers = {}
+    global.oe.player_timers = {}
+
+    -- Player speech bubble stuff (track if we have done certain messages)
+    global.oe.player_sbubbles = {}
 
     -- Ongoing attacks
-    global.oarc_enemies.attacks = {}
+    global.oe.attacks = {}
+
+    -- DEBUG helpers
+    global.oe_render_paths = true
+
+    -- These control all evo/size scaling and stuff.
+    global.oe_params = {
+        attack_size_min = 1,
+        attack_size_max = 150,
+
+        player_time_evo_factor = 0.5,
+        player_time_size_factor = 30,
+        player_time_peak_hours = 20,
+
+        pollution_evo_factor = 0.3,
+        pollution_size_factor = 80,
+        pollution_peak_amnt = 4000,
+
+        tech_evo_factor = 0.85,
+        tech_size_factor = 30,
+        tech_peak_count = 180,
+
+        rand_evo_amnt = 0.15, -- Up to + this amount
+        rand_size_amnt = 10, -- Up to + this amount
+
+        seconds_between_attacks_min = 5*6,
+        seconds_between_attacks_max = 30*6,
+        seconds_between_attacks_rand = 4*6,
+
+        radar_scan_attack_chance = 500, -- 1 in X change to trigger an attack due to a radar ping.
+    }
 
     -- Copied from wave defense
     -- game.map_settings.path_finder.use_path_cache = false
@@ -158,10 +211,10 @@ function OarcEnemiesResearchFinishedEvent(event)
     if not (event.research and event.research.force) then return end
 
     local force_name = event.research.force.name
-    if (global.oarc_enemies.tech_levels[force_name] == nil) then
-        global.oarc_enemies.tech_levels[force_name] = CountForceTechCompleted(game.forces[force_name])
+    if (global.oe.tech_levels[force_name] == nil) then
+        global.oe.tech_levels[force_name] = CountForceTechCompleted(game.forces[force_name])
     else
-        global.oarc_enemies.tech_levels[force_name] = global.oarc_enemies.tech_levels[force_name] + 1
+        global.oe.tech_levels[force_name] = global.oe.tech_levels[force_name] + 1
     end
 
     -- Trigger an attack on science!
@@ -185,7 +238,7 @@ function OarcEnemiesBuildingAttack(player_name, entity_type)
         not game.players[player_name].connected) then return end
 
     -- Check we don't have too many ongoing attacks.
-    if (#global.oarc_enemies.attacks >= OE_ATTACKS_MAX) then
+    if (#global.oe.attacks >= OE_ATTACKS_MAX) then
         log("Max number of simulataneous attacks reached.")
         return
     end
@@ -195,8 +248,8 @@ function OarcEnemiesBuildingAttack(player_name, entity_type)
                             attempts=3,
                             process_stg=OE_PROCESS_STG_FIND_TARGET,
                             building_types=entity_type}
-    log("Building Attack Request: " .. serpent.block(entity_type))
-    table.insert(global.oarc_enemies.attacks, building_attack)
+    log("Building Attack Request: " .. serpent.line(entity_type))
+    table.insert(global.oe.attacks, building_attack)
 end
 
 -- Attack a player's character
@@ -212,7 +265,7 @@ function OarcEnemiesPlayerAttackCharacter(player_name)
     end
 
     -- Check we don't have too many ongoing attacks.
-    if (#global.oarc_enemies.attacks >= OE_ATTACKS_MAX) then
+    if (#global.oe.attacks >= OE_ATTACKS_MAX) then
         log("Max number of simulataneous attacks reached.")
         return
     end
@@ -223,7 +276,7 @@ function OarcEnemiesPlayerAttackCharacter(player_name)
                             attempts=3,
                             process_stg=OE_PROCESS_STG_FIND_TARGET}
     log("Player Attack!")
-    table.insert(global.oarc_enemies.attacks, player_attack)
+    table.insert(global.oe.attacks, player_attack)
 end
 
 -- First time player init stuff
@@ -231,23 +284,30 @@ function OarcEnemiesPlayerCreatedEvent(event)
     if (game.players[event.player_index] == nil) then return end
     local p_name = game.players[event.player_index].name
 
-    if (global.oarc_enemies.player_timers[p_name] == nil) then
-        global.oarc_enemies.player_timers[p_name] = GetRandomizedPlayerTimer(0)
+    if (global.oe.player_timers[p_name] == nil) then
+        global.oe.player_timers[p_name] = {character=GetRandomizedPlayerTimer(0, 60*10),
+                                             generic=GetRandomizedPlayerTimer(0, 0)}
     end
 
-    if (global.oarc_enemies.buildings[p_name] == nil) then
-        global.oarc_enemies.buildings[p_name] = {}
+    if (global.oe.buildings[p_name] == nil) then
+        global.oe.buildings[p_name] = {}
     end
 
     local force = game.players[event.player_index].force
-    if (global.oarc_enemies.tech_levels[force.name] == nil) then
-        global.oarc_enemies.tech_levels[force.name] = CountForceTechCompleted(force)
+    if (global.oe.tech_levels[force.name] == nil) then
+        global.oe.tech_levels[force.name] = CountForceTechCompleted(force)
+    end
+
+    -- Setup tracking of first time chat bubble displays
+    if (global.oe.player_sbubbles[p_name] == nil) then
+        global.oe.player_sbubbles[p_name] = {uh_oh=false,
+                                                        rocket=false}
     end
 end
 
 function OarcEnemiesChunkGenerated(event)
     if (not event.area or not event.area.left_top) then
-        log("OarcEnemiesChunkGenerated - ERROR")
+        log("ERROR - OarcEnemiesChunkGenerated")
         return
     end
 
@@ -256,40 +316,41 @@ function OarcEnemiesChunkGenerated(event)
     local enough_land = true
 
     -- Check if there is any water in the chunk.
-    local water_tiles = event.surface.find_tiles_filtered{area = event.area, collision_mask = "water-tile", limit=5}
+    local water_tiles = event.surface.find_tiles_filtered{area = event.area,
+                                                            collision_mask = "water-tile",
+                                                            limit=5}
     if (#water_tiles >= 5) then
         enough_land = false
     end
 
     -- Check if it has spawners
     local spawners = event.surface.find_entities_filtered{area=event.area,
-                                                                type={"unit-spawner"},
-                                                                force="enemy"}
+                                                            type={"unit-spawner"},
+                                                            force="enemy"}
 
     -- If this is the first chunk in that row:
-    if (global.oarc_enemies.chunk_map[c_pos.x] == nil) then
-        global.oarc_enemies.chunk_map[c_pos.x] = {}
-    end
-
-    if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] ~= nil) then
-        log("WARNING?!? UNEXPECTED - OarcEnemiesChunkGenerated - x.y exists?")
+    if (global.oe.chunk_map[c_pos.x] == nil) then
+        global.oe.chunk_map[c_pos.x] = {}
     end
 
     -- Save chunk info.
-    global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] = {player_building=false,
+    global.oe.chunk_map[c_pos.x][c_pos.y] = {player_building=false,
                                                         near_building=false,
                                                         valid_spawn=enough_land,
                                                         enemy_spawners=spawners}
 end
 
 function OarcEnemiesChunkIsNearPlayerBuilding(c_pos)
-    if (global.oarc_enemies.chunk_map[c_pos.x] == nil) then
-        global.oarc_enemies.chunk_map[c_pos.x] = {}
+    if (global.oe.chunk_map[c_pos.x] == nil) then
+        global.oe.chunk_map[c_pos.x] = {}
     end
-    if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] == nil) then
-        global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] = {player_building=false, near_building=true, valid_spawn=true}
+    if (global.oe.chunk_map[c_pos.x][c_pos.y] == nil) then
+        global.oe.chunk_map[c_pos.x][c_pos.y] = {player_building=false,
+                                                            near_building=true,
+                                                            valid_spawn=true,
+                                                            enemy_spawners={}}
     else
-        global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].near_building = true
+        global.oe.chunk_map[c_pos.x][c_pos.y].near_building = true
     end
 end
 
@@ -312,15 +373,15 @@ function OarcEnemiesIsChunkValidSpawn(c_pos)
     end
 
     -- Check entry exists.
-    if (global.oarc_enemies.chunk_map[c_pos.x] == nil) then
+    if (global.oe.chunk_map[c_pos.x] == nil) then
         return false
     end
-    if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] == nil) then
+    if (global.oe.chunk_map[c_pos.x][c_pos.y] == nil) then
         return false
     end
 
     -- Get entry
-    local chunk = global.oarc_enemies.chunk_map[c_pos.x][c_pos.y]
+    local chunk = global.oe.chunk_map[c_pos.x][c_pos.y]
 
     -- Check basic flags
     if (chunk.player_building or chunk.near_building or not chunk.valid_spawn) then
@@ -344,6 +405,8 @@ function OarcEnemiesIsChunkValidSpawn(c_pos)
     return true
 end
 
+-- Check if a given chunk has a spawner in it.
+-- Ideally optimized since we use our tracking of spawners in chunk_map
 function OarcEnemiesDoesChunkHaveSpawner(c_pos)
 
     -- Chunk should exist.
@@ -352,15 +415,15 @@ function OarcEnemiesDoesChunkHaveSpawner(c_pos)
     end
 
     -- Check entry exists.
-    if (global.oarc_enemies.chunk_map[c_pos.x] == nil) then
+    if (global.oe.chunk_map[c_pos.x] == nil) then
         return false
     end
-    if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] == nil) then
+    if (global.oe.chunk_map[c_pos.x][c_pos.y] == nil) then
         return false
     end
 
     -- Get entry
-    local chunk = global.oarc_enemies.chunk_map[c_pos.x][c_pos.y]
+    local chunk = global.oe.chunk_map[c_pos.x][c_pos.y]
 
     -- Check basic flags
     if (not chunk.valid_spawn) then
@@ -391,25 +454,21 @@ function OarcEnemiesBiterBaseBuilt(event)
         not (event.entity.force.name == "enemy") or
         not (event.entity.type == "unit-spawner")) then return end
 
-
     local c_pos = GetChunkPosFromTilePos(event.entity.position)
 
-    if (global.oarc_enemies.chunk_map[c_pos.x] == nil) then
-        log("ERROR - OarcEnemiesBiterBaseBuilt chunk_map.x is nil")
-        return
+    if (global.oe.chunk_map[c_pos.x] == nil) then
+        global.oe.chunk_map[c_pos.x] = {}
     end
 
-    if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y] == nil) then
+    if (global.oe.chunk_map[c_pos.x][c_pos.y] == nil) then
         log("ERROR - OarcEnemiesBiterBaseBuilt chunk_map.x.y is nil")
         return
     end
 
-    if (global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners == nil) then
-        log("New spawner (first)?")
-        global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners = {event.entity}
+    if (global.oe.chunk_map[c_pos.x][c_pos.y].enemy_spawners == nil) then
+        global.oe.chunk_map[c_pos.x][c_pos.y].enemy_spawners = {event.entity}
     else
-        log("New spawner (insert)?")
-        table.insert(global.oarc_enemies.chunk_map[c_pos.x][c_pos.y].enemy_spawners, event.entity)
+        table.insert(global.oe.chunk_map[c_pos.x][c_pos.y].enemy_spawners, event.entity)
     end
 end
 
@@ -423,16 +482,19 @@ function OarcEnemiesEntityDiedEvent(event)
     -- Enemy spawners only.
     if (not (event.entity.type == "unit-spawner")) then return end
 
+    -- Check we don't have too many ongoing attacks.
+    if (#global.oe.attacks >= OE_ATTACKS_MAX_RETALIATION) then
+        log("Max number of simulataneous attacks reached (retaliation).")
+        return
+    end
+
     local death_attack = {attempts=1,
                             spawn_chunk=GetChunkPosFromTilePos(event.entity.position)}
 
     -- If there is just a force, then just attack the area.
     if (not event.cause) then
-        log("Spawner died ONLY FORCE!")
-
         death_attack.process_stg = OE_PROCESS_STG_CREATE_GROUP
         death_attack.spawn_pos = event.entity.position
-        -- death_attack.target_player = nil
         death_attack.target_type = OE_TARGET_TYPE_AREA
         death_attack.target_chunk = GetChunkPosFromTilePos(event.entity.position)
 
@@ -442,11 +504,8 @@ function OarcEnemiesEntityDiedEvent(event)
                                                 target_pos=event.entity.position,
                                                 min_size=8,min_evo=0.25}
 
-
     -- If we have a cause, go attack that cause.
     else
-        log("Spawner died HAS CAUSE!")
-
         local player = nil
         if (event.cause.type == "character") then
             player  = event.cause.player
@@ -454,8 +513,8 @@ function OarcEnemiesEntityDiedEvent(event)
             player  = event.cause.last_user
         end
 
-        -- No attacks on offline player
-        if (not player or not player.connected) then return end
+        -- No attacks on offline players??
+        -- if (not player or not player.connected) then return end
 
         death_attack.process_stg = OE_PROCESS_STG_SPAWN_PATH_REQ
         death_attack.target_player = player.name
@@ -470,7 +529,7 @@ function OarcEnemiesEntityDiedEvent(event)
                                                 min_size=8,min_evo=0.25}
     end
 
-    table.insert(global.oarc_enemies.attacks, death_attack)
+    table.insert(global.oe.attacks, death_attack)
 end
 
 
@@ -491,19 +550,19 @@ function OarcEnemiesTrackBuildings(e)
         (e.type == "artillery-turret") then
 
         if (e.last_user == nil) then
-            log("OarcEnemiesTrackBuildings - entity.last_user is nil! " .. e.name)
+            log("ERROR - OarcEnemiesTrackBuildings - entity.last_user is nil! " .. e.name)
             return
         end
 
-        if (global.oarc_enemies.buildings[e.last_user.name] == nil) then
-            global.oarc_enemies.buildings[e.last_user.name] = {}
+        if (global.oe.buildings[e.last_user.name] == nil) then
+            global.oe.buildings[e.last_user.name] = {}
         end
 
-        if (global.oarc_enemies.buildings[e.last_user.name][e.type] == nil) then
-            global.oarc_enemies.buildings[e.last_user.name][e.type] = {}
+        if (global.oe.buildings[e.last_user.name][e.type] == nil) then
+            global.oe.buildings[e.last_user.name][e.type] = {}
         end
 
-        table.insert(global.oarc_enemies.buildings[e.last_user.name][e.type], e)
+        table.insert(global.oe.buildings[e.last_user.name][e.type], e)
 
     end
 end
@@ -542,21 +601,21 @@ function GetRandomBuildingSingleType(player_name, entity_type, count)
     end
 
     if (count_internal == 0) then
-        log("GetRandomBuildingSingleType - recursive limit hit")
+        log("WARN - GetRandomBuildingSingleType - recursive limit hit")
         return nil
     end
 
-    if (not global.oarc_enemies.buildings[player_name][entity_type] or
-        (#global.oarc_enemies.buildings[player_name][entity_type] == 0)) then
-        log("GetRandomBuildingSingleType - none found " .. entity_type)
+    if (not global.oe.buildings[player_name][entity_type] or
+        (#global.oe.buildings[player_name][entity_type] == 0)) then
+        -- log("GetRandomBuildingSingleType - none found " .. entity_type)
         return nil
     end
 
-    local rand_key = GetRandomKeyFromTable(global.oarc_enemies.buildings[player_name][entity_type])
-    local random_building = global.oarc_enemies.buildings[player_name][entity_type][rand_key]
+    local rand_key = GetRandomKeyFromTable(global.oe.buildings[player_name][entity_type])
+    local random_building = global.oe.buildings[player_name][entity_type][rand_key]
 
     if (not random_building or not random_building.valid) then
-        table.remove(global.oarc_enemies.buildings[player_name][entity_type], rand_key)
+        table.remove(global.oe.buildings[player_name][entity_type], rand_key)
         return GetRandomBuildingSingleType(player_name, entity_type, count_internal-1)
     else
         return random_building
@@ -569,7 +628,8 @@ function CreateEnemyGroupGivenEvoAndCount(surface, position, evo, count)
     local biter_list = CalculateEvoChanceListBiters(evo)
     local spitter_list = CalculateEvoChanceListSpitters(evo)
 
-    local rand_spitter_count = math.random(0,count/3)
+    -- Spitters will be between 10-50% of the size
+    local rand_spitter_count = math.random(math.ceil(count/10),math.ceil(count/2))
 
     local enemy_units = {}
     for i=1,count do
@@ -596,10 +656,10 @@ function CreateEnemyGroup(surface, position, units)
         if (unit_position) then
             new_unit = surface.create_entity{name = biter_name, position = unit_position}
             new_enemy_group.add_member(new_unit)
-            -- table.insert(global.oarc_enemies.units, new_unit)
+            -- table.insert(global.oe.units, new_unit)
         end
     end
-    table.insert(global.oarc_enemies.groups, new_enemy_group)
+    table.insert(global.oe.groups, new_enemy_group)
 
     -- Return the new group
     return new_enemy_group
@@ -608,11 +668,11 @@ end
 
 -- function OarcEnemiesGroupCreatedEvent(event)
 --     log("Unit group created: " .. event.group.group_number)
---     -- if (global.oarc_enemies.groups == nil) then
---     --     global.oarc_enemies.groups = {}
+--     -- if (global.oe.groups == nil) then
+--     --     global.oe.groups = {}
 --     -- end
---     -- if (global.oarc_enemies.groups[event.group.group_number] == nil) then
---     --     global.oarc_enemies.groups[event.group.group_number] = event.group
+--     -- if (global.oe.groups[event.group.group_number] == nil) then
+--     --     global.oe.groups[event.group.group_number] = event.group
 --     -- else
 --     --     log("A group with this ID was already created???" .. event.group.group_number)
 --     -- end
@@ -621,30 +681,22 @@ end
 function OarcEnemiesUnitRemoveFromGroupEvent(event)
 
     -- Force the unit back into its group if possible, only while that group is navigating/moving
-    if ((global.oarc_enemies.groups[event.group.group_number] ~= nil) and
+    if ((global.oe.groups[event.group.group_number] ~= nil) and
         event.group and
-        event.group.valid) then
-
-
-
-        if ((event.group.state == defines.group_state.moving) or
-            (event.group.state == defines.group_state.pathfinding)) then
-            event.group.add_member(event.unit)
-            log("Unit removed and re-added?")
-            return
-        else
-            log("ERROR - Unit removed and group is valid, but not in an expected state?")
-        end
+        event.group.valid and
+        ((event.group.state == defines.group_state.moving) or
+        (event.group.state == defines.group_state.pathfinding))) then
+        -- Re-add a unit back if it's on the move.
+        event.group.add_member(event.unit)
+        return
     end
 
     -- Otherwise, ask the unit to build a base.
-    log("Unit removed from group? " .. event.unit.name .. event.unit.position.x.. event.unit.position.y)
     EnemyUnitBuildBaseThenWander(event.unit, event.unit.position)
-    -- event.unit.destroy()
 end
 
 function FindAttackKeyFromGroupIdNumber(id)
-    for key,attack in pairs(global.oarc_enemies.attacks) do
+    for key,attack in pairs(global.oe.attacks) do
         if (attack.group_id and (attack.group_id == id)) then
             return key
         end
@@ -695,7 +747,7 @@ function EnemyGroupGoAttackEntityThenWander(group, target, path)
     -- Based on number of segments in the path.
     local i = 100
     while (path[i] ~= nil) do
-        log("Adding path " .. i)
+        -- log("Adding path " .. i)
         table.insert(combined_commands, {type = defines.command.go_to_location,
                                             destination = path[i].position,
                                             pathfind_flags={low_priority=true},
@@ -708,13 +760,11 @@ function EnemyGroupGoAttackEntityThenWander(group, target, path)
     table.insert(combined_commands, {type = defines.command.attack,
                                         target = target,
                                         distraction = defines.distraction.by_damage})
-
     -- Then attack anything in the area.
     table.insert(combined_commands, {type = defines.command.attack_area,
                                         destination = target.position,
                                         radius = CHUNK_SIZE*2,
                                         distraction = defines.distraction.by_enemy})
-
 
     -- Then wander and attack anything in the area
     table.insert(combined_commands, {type = defines.command.wander,
@@ -740,19 +790,19 @@ function EnemyGroupBuildBaseThenWander(group, target_pos)
 
     local combined_commands = {}
 
-    -- Build a base (a few attempts)
+    -- Build a base (a few attempts, with randomized locations.)
     table.insert(combined_commands, {type = defines.command.build_base,
                                         destination = target_pos,
                                         ignore_planner = true,
                                         distraction = defines.distraction.by_enemy})
     table.insert(combined_commands, {type = defines.command.build_base,
-                                        destination = {x=target_pos.x+math.random(-64,64),
-                                                        y=target_pos.y+math.random(-64,64)},
+                                        destination = {x=target_pos.x+math.random(-CHUNK_SIZE,CHUNK_SIZE),
+                                                        y=target_pos.y+math.random(-CHUNK_SIZE,CHUNK_SIZE)},
                                         ignore_planner = true,
                                         distraction = defines.distraction.by_enemy})
     table.insert(combined_commands, {type = defines.command.build_base,
-                                        destination = {x=target_pos.x+math.random(-64,64),
-                                                        y=target_pos.y+math.random(-64,64)},
+                                        destination = {x=target_pos.x+math.random(-CHUNK_SIZE,CHUNK_SIZE),
+                                                        y=target_pos.y+math.random(-CHUNK_SIZE,CHUNK_SIZE)},
                                         ignore_planner = true,
                                         distraction = defines.distraction.by_enemy})
 

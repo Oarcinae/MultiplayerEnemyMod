@@ -3,40 +3,17 @@
 
 -- Oarc's Enemies Mod
 --
+-- The core purpose of this mod is to provide a way to scale all enemy attacks to the target player and region.
+-- Ideally to complement my scenario
+--
 -- Feel free to re-use anything you want. It would be nice to give me credit
 -- if you can.
 
-
-
--- No spawners?
--- Evolution = number of completed research * 0.005 (200 research complete events = 100% evo)
--- # of waves per time scales (Start with 1hr, work up to 10 min?)
--- size of waves scales (Start with 5, work up to 50?)
-
--- Enemies spawn in chunks that match the following constraints:
---  Any chunk within 7 chunks of a player building is ruled out
---  Chunk must not have active vision (must be fog of war or not charted)
-
--- Enemies could target the following:
---  Power generation
---  Science
---  Miners
---  Players (going on an adventure could be risky for example)
---  Default pollution centers
-
--- Other rules:
+-- High level:
 --  Only spawn when players are online.
 --  Scale based on target force research
---  Scale based on pollution in target area (600 is upper limit)
-
-
--- General AI Flow:
---  Track candidate spawn chunks based on player buildings and on chunk generated checks for land space.
---  Pick a tentative spawn chunk.
---  Pick a tentative target entity or location.
---  Request pathing.
---  On successful pathing found, generate enemy unit group (with applied scaling factors)
---  Unit group attempts to path to each waypoint and reach the end target
+--  Scale based on pollution in target area
+--  Attacks are calculated and dispatched over several ticks, see oarc_enemies_tick_logic to see the flow.
 
 -- General ideas for this mod:
 --  No attacks are started on a player's stuff while they are offline.
@@ -68,37 +45,15 @@
 --      Scale back evo and size limits temporarily. Some kind of backoff?
 
 
--- Globals for tracking:
---  Map chunks to track candidate spawns.
---      Each chunk should have info on if it is a valid spawn,
---      and if it has a player building in it.
---  Force tech levels / "evo chance list"
---  Enemy unit groups currently in action.
---      Should have info about current target?
---  Timers for when next attack will occur.
-
--- Event logic:
---  For tracking player building in chunks:
---      on_built_entity
---      script_raised_built
---      on_robot_built_entity
---  For tracking map chunks
---      on_chunk_generated
---      on_chunk_deleted
---  For tracking AI
---      on_biter_base_built
---      on_entity_spawned
---      on_unit_added_to_group
---      on_unit_group_created
---      on_unit_removed_from_group
---  For executing AI functions
---      on_ai_command_completed
---          Check for failures and success
---      on_tick
---  For tracking force research
---      on_research_finished
---      on_rocket_launched
-
+-- NOTES AFTER TESTING
+--  Check for old groups, destroy after x amount of time. (stuck pathing biters.)
+--  Tweak spitter ratio.
+--  Faster on base killed spawning if possible.
+--  Cap on biter base killed to 100 or 150.
+--  Optimize search for valid spawn or spread over ticks (Put all chunks to be checked into a list to be iterated over slowly)
+--  Need to make this compatible with my scenario now
+--  Surface needs to be dynamic
+--  Implement "expansion" of some kind?
 
 ENABLE_POWER_ARMOR_QUICK_START = true
 ---------------------------------------
@@ -110,19 +65,7 @@ PLAYER_SPAWN_START_ITEMS = {
     {name="firearm-magazine", count=200},
     {name="iron-plate", count=16},
     {name="burner-mining-drill", count = 2},
-    {name="stone-furnace", count = 2},
-    -- {name="iron-plate", count=20},
-    -- {name="burner-mining-drill", count = 1},
-    -- {name="stone-furnace", count = 1},
-    -- {name="power-armor", count=1},
-    -- {name="fusion-reactor-equipment", count=1},
-    -- {name="battery-mk2-equipment", count=3},
-    -- {name="exoskeleton-equipment", count=1},
-    -- {name="personal-roboport-mk2-equipment", count=3},
-    -- {name="solar-panel-equipment", count=7},
-    -- {name="construction-robot", count=100},
-    -- {name="repair-pack", count=100},
-    -- {name="steel-axe", count=3},
+    {name="stone-furnace", count = 2}
 }
 
 -- Items provided after EVERY respawn (disabled by default)

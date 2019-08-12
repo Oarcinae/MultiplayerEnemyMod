@@ -1,14 +1,15 @@
 -- oarc_enemies_defines.lua
 -- Aug 2019
--- Settings and general definitions and stuff.
-
-
+-- Some hard settings and general definitions and stuff.
 
 -- Max number of ongoing attacks at any time.
 OE_ATTACKS_MAX = 30
 
+-- Max number of attacks when considering biter bases being destroyed.
+OE_ATTACKS_MAX_RETALIATION = 150
+
 -- Number of chunks around any building that don't allow enemy spawns.
-OE_BUILDING_SAFE_AREA_RADIUS = 4
+OE_BUILDING_SAFE_AREA_RADIUS = 3
 
 -- Timer backoff on destroyed buildings
 -- Evo backoff on destroyed buildings
@@ -16,7 +17,7 @@ OE_BUILDING_SAFE_AREA_RADIUS = 4
 -- OE_BUILDING_DESTROYED_TIMER_BACKOFF = ??
 
 -- How far away can attacks start from.
-OE_ATTACK_SEARCH_RADIUS_CHUNKS = 40
+OE_ATTACK_SEARCH_RADIUS_CHUNKS = 35
 
 -- These are the types of targetted attacks that can be requested.
 OE_TARGET_TYPE_PLAYER       = 1     -- Attack a player.
@@ -40,27 +41,12 @@ OE_PROCESS_STG_RETRY_PATH_REQ   = 10    -- This means we had a group, that faile
 OE_PROCESS_STG_RETRY_PATH_CALC  = 11    -- Pathing is pending from OE_PROCESS_STG_RETRY_PATH_REQ
 OE_PROCESS_STG_BUILD_BASE       = 12    -- Sometimes we build bases. Like if an attack was successful.
 
--- These control all evo/size scaling and stuff.
-oe_params = {
-    attack_size_min = 1,
-    attack_size_max = 150,
-
-    player_time_evo_factor = 0.5,
-    player_time_size_factor = 30,
-    player_time_peak_hours = 20,
-
-    pollution_evo_factor = 0.3,
-    pollution_size_factor = 80,
-    pollution_peak_amnt = 4000,
-
-    tech_evo_factor = 0.85,
-    tech_size_factor = 30,
-    tech_peak_count = 180,
-
-    rand_evo_amnt = 0.15, -- Up to + this amount
-    rand_size_amnt = 10, -- Up to + this amount
-
-    seconds_between_attacks_min = 5,
-    seconds_between_attacks_max = 9999,
-    seconds_between_attacks_rand = 4
-}
+OE_GENERIC_TARGETS = {"ammo-turret",
+                        "electric-turret",
+                        "fluid-turret",
+                        "artillery-turret",
+                        "mining-drill",
+                        "furnace",
+                        "reactor",
+                        "assembling-machine",
+                        "generator"}

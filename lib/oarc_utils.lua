@@ -110,7 +110,7 @@ function TableLength(T)
   return count
 end
 
--- Fisher-Yares shuffle
+-- Fisher-Yates shuffle
 -- https://stackoverflow.com/questions/35572435/how-do-you-do-the-fisher-yates-shuffle-in-lua
 function FYShuffle(tInput)
     local tReturn = {}
@@ -345,7 +345,6 @@ function GetRandomVector()
         randVec.x = math.random(-3,3)
         randVec.y = math.random(-3,3)
     end
-    log("direction: x=" .. randVec.x .. ", y=" .. randVec.y)
     return randVec
 end
 
@@ -451,7 +450,6 @@ function FindUngeneratedCoordinates(minDistChunks, maxDistChunks, surface)
         end
     end
 
-    log("spawn: x=" .. position.x .. ", y=" .. position.y)
     return position
 end
 
